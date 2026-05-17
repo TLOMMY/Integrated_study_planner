@@ -106,6 +106,3 @@ uvicorn main:app --reload
 3.  与前端框架（如 Vue/React）通过 HTTP 请求对接
 
 ---
-
-## 📄 License
-MIT License
