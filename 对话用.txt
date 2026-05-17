@@ -1,0 +1,276 @@
+你可以把下面这段直接复制到新对话里。
+它会让新的我快速知道你项目当前状态，并继续帮你。
+
+---
+
+# 项目当前状态总结（给后续对话）
+
+我正在做一个 Vue3 + Vite + Pinia 的“智能学习规划系统”前端项目，属于移动端 WebApp 风格。
+
+项目已经完成了大部分前端架构，但目前处于“前后端联调阶段”，代码因为多次 AI 生成后比较混乱，我现在的目标不是继续加功能，而是整理和稳定项目。
+
+---
+
+# 技术栈
+
+* Vue3
+* Vite
+* Pinia
+* Vue Router
+* Axios
+* TailwindCSS
+* ECharts
+
+---
+
+# 项目结构情况
+
+已经有：
+
+* Layout 架构
+* BottomNav
+* Router
+* Pinia Store
+* axios request 封装
+* API 分层
+* 多页面结构
+* 移动端 UI（375x812 iPhone 模拟容器）
+
+页面包括：
+
+* TodayTask
+* Statistics
+* FocusTimer
+* AI Assistant
+* Plans
+* Timetable
+* Profile
+* DayView
+
+---
+
+# 已完成内容
+
+## 前端 UI
+
+大部分页面已经完成。
+
+## 路由
+
+router 已搭好，页面可切换。
+
+## Pinia
+
+已经有多个 store。
+
+## request.js
+
+已经有：
+
+* token 自动携带
+* axios 封装
+* 响应拦截器
+
+## Vite proxy
+
+已经配置：
+
+```js
+server: {
+  proxy: {
+    '/api': {
+      target: 'http://localhost:8000',
+      changeOrigin: true,
+      rewrite: path => path.replace(/^\/api/, '')
+    }
+  }
+}
+```
+
+## request.js 已改
+
+已经改成：
+
+```js
+baseURL: '/api'
+```
+
+---
+
+# 当前项目真实情况
+
+目前：
+
+* 前端基本完成（约80%）
+* 后端接口并未全部完成
+* 很多页面现在还是 mock/fallback 数据
+* 还没有真正全面联调
+
+---
+
+# 后端接口现状
+
+后端已经有：
+
+* /study/stats
+* /study/record
+* /user/me
+* /auth/login
+* /auth/register
+* /ai/plan
+* /ai/replan
+
+但没有：
+
+* /tasks
+* /plans
+* /timetable
+* /ai/chat
+
+所以目前前端有一些“超前开发”。
+
+---
+
+# 当前最重要目标
+
+不是继续生成新功能。
+
+而是：
+
+# 整理工程 + 联调。
+
+---
+
+# 当前高优先级检查项
+
+## 1. Statistics 页面
+
+检查：
+
+* 是否是真数据
+* 是否还是假数据
+* store 是否正确调用 `/study/stats`
+
+## 2. FocusTimer
+
+检查：
+
+* 是否真正 POST `/study/record`
+
+## 3. Profile
+
+检查：
+
+* 是否请求 `/user/me`
+
+## 4. AI 页面
+
+目前最混乱，暂时不要大改。
+只检查：
+
+* 页面是否正常
+* 是否报错
+
+---
+
+# 当前已知问题
+
+## 1. request.js 曾经用：
+
+```js
+import.meta.env.VITE_BASE_URL
+```
+
+后来已改成：
+
+```js
+baseURL: '/api'
+```
+
+## 2. vite.config.js 已修复
+
+## 3. package.json 里 vue-router 版本可能有问题
+
+目前是：
+
+```json
+"vue-router": "^5.0.6"
+```
+
+建议改成：
+
+```json
+"vue-router": "^4.x"
+```
+
+## 4. request.js 里有：
+
+```js
+router.push('/login')
+```
+
+但项目目前没有 login 页面。
+
+## 5. AI 模块前后端不一致
+
+前端像聊天系统，
+后端是 `/ai/plan`。
+
+---
+
+# 当前开发策略（非常重要）
+
+不要继续疯狂生成新代码。
+
+现在应该：
+
+* 一次只检查一个模块
+* 一次只修一个问题
+* 先稳定项目
+* 再联调
+* 最后才优化功能
+
+---
+
+# 当前阶段目标
+
+第一目标：
+
+```txt
+项目稳定运行
+页面不白屏
+```
+
+第二目标：
+
+```txt
+至少一个页面成功联调真实后端
+```
+
+推荐从：
+
+```txt
+Statistics
+```
+
+开始。
+
+---
+
+# 我当前最需要的帮助
+
+希望继续帮助我：
+
+* 检查模块
+* 整理项目
+* 找遗漏问题
+* 联调后端
+* 判断哪些是假数据
+* 判断哪些代码没改完
+* 一次一步推进项目
+
+因为我现在最大的问题不是不会 Vue，而是：
+
+```txt
+项目变复杂后失去控制感
+```
