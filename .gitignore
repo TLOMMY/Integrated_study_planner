@@ -1,0 +1,14 @@
+# 虚拟环境
+.venv/
+venv/
+
+# IDE 配置
+.idea/
+.vscode/
+
+# 临时文件
+*.bak
+*.log
+*.txt
+directory_structure.txt
+project_tree.txt
