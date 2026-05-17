@@ -11,6 +11,7 @@ Integrated Study Planner - AI 学习规划模块
 📁 精简项目结构（核心文件）
 plaintext
 integrated_study_planner/
+integrated_study_planner/
 ├── app/
 │   ├── ai/                 # AI 学习规划核心
 │   │   ├── __init__.py
@@ -33,7 +34,6 @@ integrated_study_planner/
 ├── requirements.txt        # 依赖清单
 ├── .env                    # 环境变量配置
 └── study_planner.db        # SQLite 数据存储
-
 🚀 快速开始
 1. 安装依赖
 bash
