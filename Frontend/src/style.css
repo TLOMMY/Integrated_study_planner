@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: #e8ecf6;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  height: 100%;
+}
+
+/*
+ * 三档布局：
+ *   < 600px      手机全屏（也是 iOS / Android 安装包里的样子）
+ *   600–1023px   平板/小窗：居中显示一台"手机"，方便投屏演示
+ *   ≥ 1024px     电脑：铺满窗口，左侧边栏 + 多栏内容（见 MainLayout / SideNav）
+ */
+.phone {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: theme('colors.background');
+}
+
+@media (min-width: 600px) and (max-width: 1023.98px) {
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(1200px 600px at 20% 10%, #dfe6ff 0%, transparent 60%),
+      radial-gradient(900px 500px at 90% 90%, #f3e8ff 0%, transparent 60%), #e8ecf6;
+  }
+  #app {
+    height: auto;
+  }
+  .phone {
+    width: 390px;
+    height: min(844px, calc(100vh - 48px));
+    border-radius: 40px;
+    box-shadow: 0 40px 80px -30px rgba(30, 41, 99, 0.45), 0 0 0 10px #0f172a, 0 0 0 12px #334155;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-3xl border border-ink-line/70 bg-surface shadow-soft;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-bold transition active:scale-[.97] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-primary text-white shadow-lift hover:bg-primary-dark;
+  }
+  .btn-ghost {
+    @apply btn bg-background text-ink-soft hover:bg-ink-line/60;
+  }
+  .btn-danger {
+    @apply btn bg-danger-light text-danger hover:bg-red-100;
+  }
+  .icon-btn {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-soft transition active:scale-95;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full border border-ink-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition active:scale-95;
+  }
+  .chip-active {
+    @apply border-primary bg-primary-light text-primary;
+  }
+  .field {
+    @apply w-full rounded-2xl border border-transparent bg-background px-4 py-3 text-sm text-ink outline-none transition placeholder:text-ink-mute focus:border-primary/40 focus:bg-surface focus:ring-4 focus:ring-primary/10;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-bold text-ink-soft;
+  }
+  .section-title {
+    @apply text-[15px] font-black text-ink;
+  }
+  .skeleton {
+    @apply animate-shimmer rounded-2xl bg-[length:200%_100%];
+    background-image: linear-gradient(90deg, #eef1f6 0%, #f8fafc 50%, #eef1f6 100%);
+  }
+  .num {
+    @apply font-num tabular-nums;
+  }
+  /* 桌面端页面内容的统一宽度：居中、两侧留白（内边距由各页面用 lg:px-* 控制） */
+  .desk-page {
+    @apply w-full lg:mx-auto lg:max-w-[1180px];
+  }
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+
+/* 桌面端：鼠标操作需要能看到滚动条，统一用细滚动条 */
+@media (min-width: 1024px) {
+  .scrollbar-hide {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: block;
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-hide::-webkit-scrollbar-thumb {
+    border-radius: 8px;
+    background: #cbd5e1;
+  }
+  .scrollbar-hide::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* 页面进入动画（顶层路由切换） */
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.page-enter {
+  animation: page-in 0.2s ease both;
+}

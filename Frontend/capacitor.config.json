@@ -1,0 +1,12 @@
+{
+  "appId": "com.xueyeguanjia.app",
+  "appName": "学业管家",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": true
+  },
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

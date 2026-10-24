@@ -1,0 +1,25 @@
+# 学业管家后端（systemd）：/etc/systemd/system/xueyeguanjia.service
+# 开机自启、崩溃自动重启；只监听本机 8000 端口，由 Nginx 对外提供 HTTPS。
+[Unit]
+Description=XueYeGuanJia backend (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=xueyeguanjia
+Group=xueyeguanjia
+WorkingDirectory=/opt/xueyeguanjia/app/Backend+AI-interface
+# 密钥等配置放在仓库外，见 deploy/backend.env.example
+EnvironmentFile=/etc/xueyeguanjia/backend.env
+# 单进程：SQLite 写入和登录限流都在进程内，学生规模足够
+ExecStart=/opt/xueyeguanjia/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=always
+RestartSec=3
+
+# 基本加固
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

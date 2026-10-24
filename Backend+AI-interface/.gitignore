@@ -1,0 +1,23 @@
+# 虚拟环境
+.venv/
+venv/
+
+# IDE 配置
+.idea/
+.vscode/
+
+# 本地数据与密钥
+.env
+*.db
+*.db-journal
+
+# 临时文件
+*.bak
+*.log
+*.txt
+!requirements.txt
+__pycache__/
+.pytest_cache/
+
+# 用户反馈（txt，含用户信息）
+feedback/

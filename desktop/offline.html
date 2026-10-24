@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:" />
+    <title>学业管家 · 连接服务器</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+        background: radial-gradient(900px 500px at 15% 10%, #dfe6ff 0%, transparent 60%), radial-gradient(700px 400px at 90% 90%, #f3e8ff 0%, transparent 60%), #f5f7fb; color: #0f172a; }
+      .card { width: min(480px, 92vw); background: #fff; border-radius: 28px; padding: 32px; box-shadow: 0 30px 60px -30px rgba(30, 41, 99, .45); }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand img { width: 48px; height: 48px; border-radius: 14px; }
+      h1 { margin: 0; font-size: 22px; }
+      .sub { margin: 2px 0 0; color: #94a3b8; font-size: 12px; }
+      .reason { margin: 20px 0 0; padding: 10px 14px; border-radius: 14px; background: #fff4e5; color: #c2410c; font-size: 13px; }
+      label { display: block; margin: 20px 0 6px; font-size: 12px; font-weight: 700; color: #475569; }
+      input { width: 100%; padding: 12px 14px; border: 1px solid transparent; border-radius: 14px; background: #f5f7fb; font-size: 14px; outline: none; }
+      input:focus { border-color: rgba(79, 110, 247, .4); background: #fff; box-shadow: 0 0 0 4px rgba(79, 110, 247, .1); }
+      .hint { margin: 8px 0 0; color: #94a3b8; font-size: 12px; line-height: 1.7; }
+      .result { min-height: 20px; margin: 10px 0 0; font-size: 13px; font-weight: 700; }
+      .ok { color: #10b981; } .bad { color: #ef4444; }
+      .row { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; margin-top: 18px; }
+      button { padding: 12px; border: 0; border-radius: 14px; font-size: 14px; font-weight: 700; cursor: pointer; background: #f5f7fb; color: #475569; }
+      button.primary { background: #4f6ef7; color: #fff; box-shadow: 0 14px 30px -14px rgba(79, 110, 247, .7); }
+      button:disabled { opacity: .5; cursor: default; }
+      code { padding: 1px 6px; border-radius: 6px; background: #eef1fe; color: #3b57e0; font-family: Consolas, "Cascadia Mono", monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="brand">
+        <img src="build/icon.png" alt="" />
+        <div>
+          <h1>连接学业管家服务器</h1>
+          <p class="sub">课表 · 待办 · 专注 · 成长</p>
+        </div>
+      </div>
+      <p id="reason" class="reason" hidden></p>
+
+      <label for="server">服务器地址</label>
+      <input id="server" type="url" placeholder="https://app.xueyeguanjia.com" spellcheck="false" />
+      <p class="hint">
+        正式服务器：<code>https://app.xueyeguanjia.com</code><br />
+        局域网演示：填运行项目那台电脑的地址，如 <code>http://192.168.1.5:5173</code>；本机运行填 <code>http://localhost:5173</code>
+      </p>
+      <p id="result" class="result"></p>
+
+      <div class="row">
+        <button id="reset" type="button">恢复默认</button>
+        <button id="test" type="button">测试连接</button>
+        <button id="save" class="primary" type="button">保存并进入</button>
+      </div>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id)
+      const params = new URLSearchParams(location.search)
+      const reason = params.get('reason')
+      if (reason) {
+        $('reason').hidden = false
+        $('reason').textContent = `无法连接 ${params.get('server') || ''}：${reason}`
+      }
+      let fallback = 'https://app.xueyeguanjia.com'
+      window.desktop.getServer().then((info) => {
+        fallback = info.fallback
+        $('server').value = info.server
+      })
+      const show = (text, ok) => {
+        $('result').textContent = text
+        $('result').className = `result ${ok ? 'ok' : 'bad'}`
+      }
+      const busy = (value) => ['reset', 'test', 'save'].forEach((id) => ($(id).disabled = value))
+      $('reset').onclick = () => ($('server').value = fallback)
+      $('test').onclick = async () => {
+        busy(true)
+        show('正在连接…', true)
+        const result = await window.desktop.testServer($('server').value)
+        show(result.ok ? `✓ 连接成功（${result.ms} ms）` : `✗ ${result.message}`, result.ok)
+        busy(false)
+      }
+      $('save').onclick = async () => {
+        busy(true)
+        show('正在连接…', true)
+        const result = await window.desktop.testServer($('server').value)
+        if (!result.ok) {
+          show(`✗ ${result.message}`, false)
+          return busy(false)
+        }
+        await window.desktop.saveServer($('server').value)
+      }
+      $('server').addEventListener('keydown', (e) => e.key === 'Enter' && $('save').click())
+    </script>
+  </body>
+</html>

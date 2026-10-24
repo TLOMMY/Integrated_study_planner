@@ -1,0 +1,46 @@
+{
+  "name": "xueyeguanjia-desktop",
+  "productName": "学业管家",
+  "version": "3.0.0",
+  "description": "学业管家 Windows 客户端：连接 app.xueyeguanjia.com（或局域网服务器）的轻量外壳",
+  "author": "璞玉计划项目小组",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis portable"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.xueyeguanjia.desktop",
+    "productName": "学业管家",
+    "copyright": "璞玉计划项目小组",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "offline.html",
+      "build/icon.png"
+    ],
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "学业管家",
+      "artifactName": "XueYeGuanJia-${version}-setup.${ext}"
+    },
+    "portable": {
+      "artifactName": "XueYeGuanJia-${version}-portable.exe"
+    }
+  }
+}

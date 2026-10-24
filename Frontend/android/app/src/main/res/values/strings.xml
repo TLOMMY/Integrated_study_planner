@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">学业管家</string>
+    <string name="title_activity_main">学业管家</string>
+    <string name="package_name">com.xueyeguanjia.app</string>
+    <string name="custom_url_scheme">com.xueyeguanjia.app</string>
+</resources>

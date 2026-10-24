@@ -1,0 +1,110 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-debug.log*
+dist/
+dist-ssr/
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# C++
+*.exe
+*.obj
+*.o
+*.out
+*.app
+*.ilk
+*.pdb
+
+# Office temp files
+~$*.doc*
+~$*.xls*
+~$*.ppt*
+
+# Backup files
+*.bak
+*.tmp
+
+# 界面自测截图
+.ui-shots/
+
+# 课程内部资料，不对外公开
+C++实训/
+手机端截图.zip
+
+# 打包产物与签名（安装包请上传到 GitHub Releases）
+release/
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+# 桌面端图标目录名叫 build，需要入库
+!desktop/build/
+
+# 个人笔记与无关素材
+Frontend/对话用.txt
+data-import/ChatGPT 图像*.png
