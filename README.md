@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="Frontend/public/icons/icon-192.png" width="96" alt="学业管家 logo" />
+<img src="Frontend/public/icons/icon-192.png" width="96" alt="学业管家" />
 
 # 学业管家 · Integrated Study Planner
 
-**课表 × 待办 × 专注 × 成长** —— 把 WakeUp 课程表、滴答清单、多邻国的长处整合成一个学习规划应用
+**课表 · 待办 · 专注 · 成长 一体化的大学生学习规划系统**
 
-网页版 · Windows 客户端 · Android App（iOS 规划中）· 正式地址 <https://app.xueyeguanjia.com>（部署中）
+网页版 · Windows 客户端 · Android 客户端　|　域名：`xueyeguanjia.com`
 
-[中文](#中文) · [English](#english) · [下载 Download](https://github.com/TLOMMY/Integrated_study_planner/releases)
+[中文](#中文) · [English](#english)
 
 <img src="docs/screenshots/desktop-home.png" width="860" alt="电脑端首页" />
 
@@ -20,31 +20,76 @@
 
 ## 中文
 
-### 这是什么
+### 项目简介
 
-面向大学生的学习规划应用。三类常用 App 各管一摊、互不相通：课表在 WakeUp，待办在滴答清单，坚持靠多邻国的打卡。学业管家把它们放进同一个账号，并让它们**互相联动**：
+学业管家是面向大学生的学习规划系统。它以课表为基础，把课程安排、学习任务、专注计时、学习激励与 AI 规划统一在同一个账号和同一份数据中：课表决定可用时间，AI 在空闲时段内安排学习任务，专注时长记录到具体任务上，完成情况实时转化为经验值、等级与连续学习天数。
 
-| 对标 | 学业管家的实现 |
+### 现有应用的局限
+
+| 应用类型 | 常见局限 |
 |---|---|
-| **WakeUp 课程表** | 节次网格课表、教学周切换、单双周与不连续周（如 `1-3周,18周`）、时间冲突检测、课前 10 分钟提醒；导入支持 **教务系统网页**（正方 / 强智 / 青果等）、**Excel**，以及 **图片 / PDF 交给 AI 识别** |
-| **滴答清单** | 今天 / 即将 / 已完成视图、逾期一键挪到今天、四级优先级、重复任务、任务搜索、**多选批量删除或改日期**、日 / 周 / 月三种日程视图 |
-| **多邻国** | XP 与等级、连续打卡与断火提醒、每日专注目标、15 个成就、本周 XP 排行榜、学习热力图、升级 / 达成目标的庆祝动画 |
-| **AI 学习规划** | 读取你的课表和已有任务，只在**真实空闲时段**排程；回复分为「学习建议」+「可直接导入的结构化计划」，可按天勾选导入；支持任何 OpenAI 兼容模型（DeepSeek、通义千问、Kimi、智谱、Ollama…），记住最近 10 轮对话 |
+| 课程表类应用 | 只记录上课时间，不知道课余时间用来做什么；无法把复习计划与课表关联 |
+| 通用待办清单 | 不了解课程安排，任务时间需要手动避开上课时段；缺少面向学习的统计与反馈 |
+| 学习打卡、激励类应用 | 激励与真实学习任务脱节，打卡数据无法反映课程与计划的完成情况 |
+| AI 对话助手 | 不了解个人课表与已有安排，给出的计划无法直接执行，需要手动誊抄 |
 
-联动是重点：番茄钟记在任务上；完成任务、专注都会实时结算 XP、连续天数与成就；AI 会按你的专注习惯（上午 / 下午 / 晚上哪段专注最多）优先安排。
+学生通常需要在多个应用之间来回切换、重复录入，数据彼此割裂。
+
+### 学业管家的完整功能
+
+**课表管理**
+- 节次网格课表，按教学周切换，支持单双周与不连续周（如 `1-3周,18周`）
+- 课程时间冲突检测，自定义开学日期、总周数与每节课时间
+- 三种导入方式：教务系统网页（正方、强智、青果等常见格式）、Excel 课表文件、图片或 PDF 经大模型识别
+- 课前 10 分钟提醒
+
+**任务与日程**
+- 今天、即将、已完成三种任务视图，逾期任务一键移到今天
+- 四级优先级、重复任务（每天、工作日、每周）、未定时间的全天任务
+- 按标题、科目、备注搜索全部任务；多选后批量删除或修改日期
+- 日、周、月三种日程视图，课程与任务按时间顺序统一展示
+
+**专注计时**
+- 番茄钟可关联具体任务，预设时长与自定义时长（1–180 分钟）
+- 基于时间戳计时，切换页面、锁屏或刷新不影响准确性；提前结束按实际分钟记录
+
+**成长激励**
+- 经验值与等级、连续学习天数及断签提醒、每日专注目标
+- 15 项成就、本周经验值排行榜、学习热力图、近 7 天与近 30 天统计
+- 奖励按"用户、原因、对象"唯一记账，重复操作不会重复计分，撤销完成会相应扣回
+
+**AI 学习规划**
+- 读取个人课表与已有任务，只在真实空闲时段内安排学习，并避开用餐时间与深夜
+- 每次回复分为两部分：学习建议，以及可直接导入的结构化计划（日程任务与新增课程），可按天勾选导入
+- 识别"11.1-11.10""11月5日前""下周"等日期表达；结合最近 10 轮对话记忆，追问时只修改提到的部分
+- 支持任何 OpenAI 兼容模型（DeepSeek、通义千问、Kimi、智谱、Ollama 等），密钥加密保存；无模型时由本地规则引擎完成规划
+- 按学习时段偏好排程：根据近 60 天专注记录自动判断，也可自定义优先时段、避开时段与单次时长
+
+**学习计划**
+- 手动创建或由 AI 生成，显示进度与专注时长
+- 进行中、已完成、已归档三种状态；删除的计划进入回收站，30 天内可恢复，支持多选恢复、彻底删除与一键清空
+
+**账号与安全**
+- 邮箱注册登录、演示账号；绑定邮箱与手机号、修改密码、退出其他设备
+- 连续输错密码 5 次锁定 10 分钟；修改密码后其他设备上的登录立即失效
+- 导出全部个人数据、注销账号；问题反馈以文本文件保存，便于技术人员处理
+
+**多端使用**
+- 手机、平板、电脑自适应布局；电脑端为侧边栏与多栏布局，支持作为独立窗口安装（PWA）
+- Windows 客户端与 Android 客户端，与网页版连接同一服务器，账号数据实时一致；客户端内可切换服务器地址
 
 ### 功能截图
 
-| 课表（教学周、单双周、冲突检测） | 周视图（课程与任务按时间排列） |
+| 课表 | 周视图 |
 |---|---|
 | <img src="docs/screenshots/desktop-timetable.png" alt="课表" /> | <img src="docs/screenshots/desktop-week.png" alt="周视图" /> |
-| **AI 规划：学习建议 + 结构化计划** | **从教务系统网页导入课表** |
-| <img src="docs/screenshots/desktop-ai.png" alt="AI 规划" /> | <img src="docs/screenshots/desktop-import.png" alt="课表导入" /> |
-| **成长：等级、打卡、热力图、排行榜** | **设置：账号安全、学习时段偏好、反馈** |
-| <img src="docs/screenshots/desktop-stats.png" alt="成长" /> | <img src="docs/screenshots/desktop-settings.png" alt="设置" /> |
+| **AI 学习规划** | **从教务系统网页导入课表** |
+| <img src="docs/screenshots/desktop-ai.png" alt="AI 学习规划" /> | <img src="docs/screenshots/desktop-import.png" alt="课表导入" /> |
+| **成长统计** | **设置** |
+| <img src="docs/screenshots/desktop-stats.png" alt="成长统计" /> | <img src="docs/screenshots/desktop-settings.png" alt="设置" /> |
 
 <details>
-<summary>手机端截图（点击展开）</summary>
+<summary>手机端截图</summary>
 
 | 今日 | 课表 | 日程 | 专注 | 成长 | AI |
 |---|---|---|---|---|---|
@@ -52,147 +97,112 @@
 
 </details>
 
-### 下载与使用
+### 版本迭代
 
-所有客户端都只是"外壳"，连接同一个后端服务器，所以**同一个账号在网页、电脑、手机上看到的是同一份数据**，排行榜也是大家一起比。
+**v1.0 · 基础模块**
+- 后端 FastAPI 框架与 SQLite 数据库设计
+- 教务 Excel 课表解析、PDF 章节提取与导入接口
+- 学习任务与学习计划的基础接口
+- 接入 DeepSeek 生成学习计划
+- Vue 3 前端页面框架
 
-| 平台 | 获取方式 | 说明 |
-|---|---|---|
-| 网页版 | <https://app.xueyeguanjia.com> | 电脑浏览器打开即可；Edge / Chrome 地址栏点「安装」可装成独立窗口 |
-| Windows | [Releases](https://github.com/TLOMMY/Integrated_study_planner/releases)：`XueYeGuanJia-3.0.0-setup.exe`（安装版）/ `-portable.exe`（免安装） | 未做代码签名，首次运行若出现 SmartScreen 提示，点「更多信息 → 仍要运行」 |
-| Android | [Releases](https://github.com/TLOMMY/Integrated_study_planner/releases)：`XueYeGuanJia-3.0.0.apk` | Android 7.0+；安装时允许「安装未知来源应用」 |
-| iOS | 规划中 | 需要 Apple 开发者账号；目前可在 Safari 打开网页版并「添加到主屏幕」 |
+**v2.0 · 系统重构与联动**
+- 统一接口协议 `{code, message, data}`，JWT 鉴权与用户数据隔离，前后端接口契约测试
+- 课表支持教学周、单双周、冲突检测，自动识别开学日期与总周数
+- 任务视图、优先级、重复任务、自然语言快速添加
+- 番茄钟专注计时，专注时长记录到任务
+- 经验值、等级、连续打卡、成就、排行榜与学习热力图
+- AI 规划改为读取课表、按空闲时段排程，先生成草稿、确认后导入；无模型时使用规则引擎
+- 日、周、月日程视图；旧数据库启动时自动升级
 
-> 正式服务器上线前，客户端可以连接局域网里的电脑：在 Windows 客户端的「连接服务器」页、或 Android 登录页底部的「服务器」里，填运行项目那台电脑的地址，如 `http://192.168.1.5:5173`。
+**v3.0 · 智能化与多端**
+- AI 支持自定义 OpenAI 兼容模型；回复分为学习建议与结构化计划，可按天导入；10 轮对话记忆与日期范围识别
+- 课表新增教务系统网页导入与图片、PDF 的 AI 识别导入
+- 学习时段偏好设置，AI 排程优先安排习惯时段
+- 设置页：绑定邮箱与手机号、修改密码、退出其他设备、数据导出、注销账号、问题反馈
+- 任务搜索与批量操作；学习计划回收站与归档
+- 登录失败锁定、修改密码后旧凭证失效
+- 电脑端多栏布局与 PWA 安装；Windows 与 Android 客户端
 
 ### 本地运行
 
-需要 **Python 3.11+**（开发环境 3.14）与 **Node.js 20+**。
+环境要求：Python 3.11 及以上，Node.js 20 及以上。
 
 ```bash
-# 1. 后端：http://127.0.0.1:8000，接口文档 http://127.0.0.1:8000/docs
+# 后端：http://127.0.0.1:8000，接口文档 http://127.0.0.1:8000/docs
 cd Backend+AI-interface
 python -m venv .venv
 .venv\Scripts\activate            # macOS / Linux：source .venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 
-# 2. 前端：http://localhost:5173（/api 自动代理到 8000）
+# 前端：http://localhost:5173（/api 自动转发到后端）
 cd Frontend
 npm install
 npm run dev
 ```
 
-打开 <http://localhost:5173>，点 **「一键体验演示账号」** 即可看到预置的课表、计划、45 天学习记录与排行榜（`demo@example.com` / `demo123456`）。
+打开 <http://localhost:5173>，点击「一键体验演示账号」即可查看预置的课表、计划、学习记录与排行榜（`demo@example.com` / `demo123456`）。
 
-**可选配置**：复制 `deploy/backend.env.example` 为 `Backend+AI-interface/.env` 并按需修改。填写 `DEEPSEEK_API_KEY` 后 AI 规划由大模型完成；不填时使用本地规则引擎，功能同样完整。每位用户也可以在「AI 规划 → 设置」里接入自己的模型。
-
-**局域网演示**（手机和同学的电脑一起用）：
-
-```bash
-cd Frontend
-npm run dev -- --host            # 终端会显示 http://<本机IP>:5173
-```
-
-同一 Wi-Fi 下的设备打开该地址即可（Windows 防火墙弹窗时选「允许」；校园网若有设备隔离，改用手机热点）。
-
-### 部署到服务器（xueyeguanjia.com）
-
-规划的地址分配：
-
-| 地址 | 内容 |
-|---|---|
-| `xueyeguanjia.com` / `www` | 介绍与下载页（暂未上线时自动跳到网页版） |
-| `app.xueyeguanjia.com` | 网页版 |
-| `app.xueyeguanjia.com/api/` | 后端接口，网页 / Windows / Android / iOS 都连这里 |
-
-步骤：
-
-1. **服务器**：国内云厂商的轻量应用服务器，2 核 2G 及以上、Ubuntu 22.04 / 24.04、包年包月（ICP 备案要求剩余时长 ≥ 3 个月）。
-2. **域名与备案**：`xueyeguanjia.com` 完成实名认证后，在云厂商后台提交**个人 ICP 备案**（网站用途：个人学习规划工具，提供网页版及客户端下载）。备案通过前不要用域名对外提供访问。
-3. **解析**：添加 `@`、`www`、`app` 三条 A 记录指向服务器公网 IP。
-4. **一键部署**（自动安装依赖、生成随机密钥、打包前端、配置 systemd + Nginx + HTTPS 证书 + 每日备份）：
-
-   ```bash
-   git clone https://github.com/TLOMMY/Integrated_study_planner.git
-   cd Integrated_study_planner
-   sudo bash deploy/install.sh 你的邮箱@example.com
-   ```
-
-5. **上线后**：网站底部展示备案号并链接 `beian.miit.gov.cn`；30 天内在 `beian.mps.gov.cn` 完成公安备案。
-6. **更新版本**：再次运行 `sudo bash deploy/install.sh 你的邮箱`（会拉取最新代码并重启，数据与配置保留）。
-
-| 文件 | 作用 |
-|---|---|
-| `deploy/install.sh` | 一键部署 / 更新脚本 |
-| `deploy/nginx/xueyeguanjia.conf` | 三个域名的 Nginx 配置（HTTPS、单页应用路由、`/api` 反向代理） |
-| `deploy/xueyeguanjia.service` | 后端常驻服务（开机自启、崩溃自动重启） |
-| `deploy/backend.env.example` | 生产环境配置模板（安装后位于 `/etc/xueyeguanjia/backend.env`） |
-| `deploy/backup.sh` | 每天 3:30 备份数据库，保留 30 天 |
-
-> 生产环境务必：`JWT_SECRET_KEY` 使用随机长字符串（install.sh 会自动生成）、`AI_ALLOW_PRIVATE_URLS=0`、`SEED_DEMO=0`；`.env` 与数据库不要提交到仓库。
+如需使用大模型，在 `Backend+AI-interface/.env` 中配置 `DEEPSEEK_API_KEY`（配置项参考 `deploy/backend.env.example`），或登录后在「AI 规划 → 设置」中添加模型。未配置时由本地规则引擎完成规划。
 
 ### 打包客户端
 
 ```bash
-# Windows：desktop/dist/ 下生成 setup.exe 与 portable.exe
+# Windows：在 desktop/dist/ 生成安装版与免安装版 exe
 cd desktop
 npm install
 npm run dist
 
-# Android：需要 JDK 21 + Android SDK（platform 36、build-tools 36）
+# Android：需要 JDK 21 与 Android SDK（platform 36、build-tools 36）
 cd Frontend
 npm run build
 npx cap sync android
 cd android
-gradlew assembleRelease          # 输出 app/build/outputs/apk/release/app-release.apk
+gradlew assembleRelease
 ```
-
-Android 发布签名读取 `Frontend/android/keystore.properties`（不入库，格式见 `app/build.gradle` 注释）；没有该文件时生成未签名包。**签名文件丢失后无法给已安装的用户推送更新，请妥善备份。**
 
 ### 项目结构
 
 ```
-Backend+AI-interface/     后端：FastAPI + SQLAlchemy 2 + SQLite
-  app/api/routes/         auth users tasks timetable imports study planning ai_settings feedback
-  app/services/           课表与周次、课表解析（Excel / 教务网页）、任务、游戏化、日程聚合、学习偏好
-  app/ai/                 中文需求解析、空闲时段排程、OpenAI 兼容客户端、图片 / PDF 识别
-  tests/                  91 个 pytest 用例（含前后端接口契约测试）
-Frontend/                 前端：Vue 3 + Vite + Pinia + Tailwind（手机 / 平板 / 电脑自适应，PWA）
-  android/                Capacitor Android 工程
-desktop/                  Windows 客户端（Electron 外壳）
-deploy/                   服务器部署脚本与配置
-docs/                     截图与早期数据库设计文档
-data-import/              课表解析原型脚本与示例课表（测试用）
+Backend+AI-interface/   后端：FastAPI + SQLAlchemy 2 + SQLite
+  app/api/routes/       认证、用户、任务、课表、导入、专注统计、学习计划与 AI、模型设置、反馈
+  app/services/         课表与周次、课表解析、任务、成长激励、日程聚合、学习偏好
+  app/ai/               需求解析、空闲时段排程、模型客户端、图片与 PDF 识别
+  tests/                后端测试
+Frontend/               前端：Vue 3 + Vite + Pinia + Tailwind CSS
+  android/              Android 客户端工程（Capacitor）
+desktop/                Windows 客户端（Electron）
+deploy/                 服务器配置文件
+docs/                   功能截图与数据库设计文档
+data-import/            课表解析原型与示例课表
 ```
-
-### 设计要点
-
-- **统一接口协议**：所有接口（含报错、校验失败、404）都返回 `{code, message, data}`，`message` 为可直接展示的中文；契约测试保证前端调用的每个接口在后端都存在。
-- **账号安全**：JWT 鉴权与数据隔离；密码 PBKDF2 哈希；连续输错 5 次锁定 10 分钟；改密码后其他设备立即下线；API Key 加密存储、只返回掩码。
-- **AI 可控**：先出草稿、确认后才写入；模型给出的每个学习块都会校验是否落在真实空闲时段，不合格的剔除，漏排的日子自动补齐，调用失败回退规则引擎。
-- **奖励回执**：完成任务、专注、导入等动作统一返回 XP / 升级 / 成就 / 连续天数，按 `(用户, 原因, 引用)` 唯一记账，重复点击不重复加分。
-- **数据可回收**：删除的学习计划进入回收站，30 天后自动清除；支持导出全部数据与注销账号。
 
 ### 测试
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 91 个用例，使用临时数据库，不访问外网
-cd Frontend && npm test                          # 6 个前端单元测试
+cd Backend+AI-interface && python -m pytest     # 后端 91 个用例，使用临时数据库，不访问外网
+cd Frontend && npm test                          # 前端 6 个单元测试
 cd Frontend && npm run build                     # 生产构建
 ```
 
+后端测试覆盖认证与数据隔离、课表与导入、任务、成长激励、AI 规划与模型接入、账号安全、回收站与批量操作，并包含前后端接口契约测试：前端调用的每一个接口都必须在后端存在，否则测试失败。
+
 ### 路线图
 
-- [ ] 正式服务器上线（xueyeguanjia.com）与介绍下载页
-- [ ] iOS 客户端（TestFlight）
-- [ ] 邮箱 / 短信验证码（找回密码、绑定验证）
-- [ ] 管理后台（用户、反馈、使用统计）
-- [ ] AI 对话与专注进度跨设备同步；App 关闭后的课前推送
+| 版本 | 状态 | 内容 |
+|---|---|---|
+| v1.0 | ✅ 已完成 | 基础模块：后端框架、课表解析、任务与计划接口、DeepSeek 接入、前端框架 |
+| v2.0 | ✅ 已完成 | 系统重构：统一协议与鉴权、课表周次、任务体系、专注计时、成长激励、空闲时段排程 |
+| v3.0 | ✅ 已完成 | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
+
+### AI 贡献
+
+Claude 参与了前端的设计与美化。
 
 ### 团队
 
-璞玉计划项目小组。
+璞玉计划项目小组
 
 ---
 
@@ -200,132 +210,162 @@ cd Frontend && npm run build                     # 生产构建
 
 ## English
 
-### What it is
+### Overview
 
-A study planner for university students that combines the strengths of three popular apps — **WakeUp** (class timetable), **TickTick** (to-dos) and **Duolingo** (streaks & motivation) — in one account, and makes them work together.
+XueYeGuanJia is a study planning system for university students. Built around the class timetable, it brings courses, study tasks, focus sessions, motivation and AI planning into a single account and a single data set: the timetable defines available time, the AI schedules study tasks into free slots, focus time is recorded against specific tasks, and progress is converted into experience points, levels and study streaks in real time.
 
-| Inspired by | What XueYeGuanJia does |
+### Limitations of existing apps
+
+| App category | Common limitations |
 |---|---|
-| **WakeUp timetable** | Period-grid timetable, teaching-week switcher, odd/even and non-contiguous weeks (e.g. `1-3,18`), conflict detection, 10-minute class reminders; import from the **school's academic-affairs website** (ZhengFang, QiangZhi, QingGuo…), **Excel**, or **images / PDF recognised by AI** |
-| **TickTick** | Today / Upcoming / Completed views, move overdue tasks to today, 4 priority levels, repeating tasks, task search, **multi-select delete or reschedule**, day / week / month calendar views |
-| **Duolingo** | XP and levels, streaks with at-risk alerts, daily focus goal, 15 achievements, weekly XP leaderboard, study heatmap, celebration animations |
-| **AI planning** | Reads your timetable and existing tasks and only schedules into **real free slots**. Replies have two parts — study advice plus a structured, importable plan (choose which days to import). Works with any OpenAI-compatible model (DeepSeek, Qwen, Kimi, GLM, Ollama…) and remembers the last 10 conversation turns |
+| Timetable apps | Record class times only; no link between free time and revision plans |
+| General to-do lists | Unaware of the class schedule, so tasks must be manually kept clear of lectures; no study-oriented statistics |
+| Habit and motivation apps | Rewards are detached from real study tasks; streaks do not reflect course or plan progress |
+| AI chat assistants | Do not know the user's timetable or existing commitments; plans cannot be executed directly and must be copied by hand |
 
-Everything is connected: Pomodoro sessions are logged against tasks, completing tasks and focusing settle XP, streaks and achievements in real time, and the AI prefers the time of day you actually focus most.
+Students typically switch between several apps, re-enter the same information and end up with fragmented data.
+
+### Features
+
+**Timetable**
+- Period-grid timetable by teaching week, with odd/even and non-contiguous weeks (e.g. `1-3, 18`)
+- Conflict detection; configurable semester start, number of weeks and period times
+- Three import methods: the school's academic-affairs web pages (ZhengFang, QiangZhi, QingGuo and similar), Excel files, and images or PDFs recognised by a large language model
+- Reminders 10 minutes before class
+
+**Tasks and calendar**
+- Today, Upcoming and Completed views; move overdue tasks to today in one step
+- Four priority levels, repeating tasks (daily, weekdays, weekly) and all-day tasks without a fixed time
+- Search across titles, subjects and notes; multi-select to delete or reschedule in bulk
+- Day, week and month views with courses and tasks shown together in chronological order
+
+**Focus timer**
+- Pomodoro sessions linked to tasks, with presets and custom durations (1–180 minutes)
+- Timestamp-based timing that stays accurate across page switches, screen locks and reloads; early finishes are recorded by actual minutes
+
+**Motivation**
+- Experience points and levels, study streaks with at-risk alerts, daily focus goal
+- 15 achievements, weekly leaderboard, study heatmap, 7-day and 30-day statistics
+- Rewards are booked once per user, reason and target, so repeated actions never double-count and undoing a completion revokes its reward
+
+**AI study planning**
+- Reads the user's timetable and existing tasks and schedules only into real free slots, avoiding meal times and late nights
+- Every reply has two parts: study advice and a structured, importable plan (tasks and new courses), with per-day selection for import
+- Understands date expressions such as "11.1-11.10", "before 5 Nov" and "next week"; remembers the last 10 turns and changes only what the user asks to change
+- Works with any OpenAI-compatible model (DeepSeek, Qwen, Kimi, GLM, Ollama and others) with encrypted key storage; a local rule engine handles planning when no model is configured
+- Schedules by study-time preference, either learned from the last 60 days of focus records or set manually (preferred and avoided periods, session length)
+
+**Study plans**
+- Created manually or generated by AI, with progress and focus time
+- Active, Completed and Archived states; deleted plans go to a recycle bin for 30 days, with multi-select restore, permanent deletion and empty-bin
+
+**Account and security**
+- Email sign-up and sign-in, demo account; email and phone binding, password change, sign out of other devices
+- Lockout for 10 minutes after 5 failed sign-in attempts; other sessions are revoked when the password changes
+- Full data export, account deletion, and in-app feedback saved as text files for the maintainers
+
+**Multi-platform**
+- Responsive layout for phones, tablets and desktops; sidebar and multi-column layout on desktop, installable as a standalone window (PWA)
+- Windows and Android clients connected to the same server as the web app, so account data stays consistent; the server address can be changed in the client
 
 ### Screenshots
 
-See the [Chinese section](#功能截图) above — desktop: timetable, week view, AI planning, timetable import, growth, settings; mobile screenshots are in the collapsible block.
+See the [Chinese section](#功能截图) above for desktop and mobile screenshots.
 
-### Download
+### Release history
 
-All clients are thin shells connected to the same backend, so one account shows the same data everywhere and the leaderboard is shared.
+**v1.0 · Foundations**
+- FastAPI backend and SQLite schema
+- Excel timetable parsing, PDF chapter extraction and import endpoints
+- Basic task and study-plan APIs
+- DeepSeek-based plan generation
+- Vue 3 frontend skeleton
 
-| Platform | Get it | Notes |
-|---|---|---|
-| Web | <https://app.xueyeguanjia.com> | Open in a browser; in Edge / Chrome click "Install" in the address bar for a standalone window |
-| Windows | [Releases](https://github.com/TLOMMY/Integrated_study_planner/releases): `XueYeGuanJia-3.0.0-setup.exe` / `-portable.exe` | Not code-signed: on a SmartScreen prompt choose "More info → Run anyway" |
-| Android | [Releases](https://github.com/TLOMMY/Integrated_study_planner/releases): `XueYeGuanJia-3.0.0.apk` | Android 7.0+; allow installing from unknown sources |
-| iOS | Planned | Requires an Apple Developer account; for now use Safari → "Add to Home Screen" |
+**v2.0 · Rebuild and integration**
+- Unified `{code, message, data}` protocol, JWT authentication with per-user isolation, frontend–backend API contract tests
+- Teaching weeks, odd/even weeks, conflict detection, automatic semester detection on import
+- Task views, priorities, repeating tasks, natural-language quick add
+- Pomodoro focus timer recorded against tasks
+- Experience points, levels, streaks, achievements, leaderboard and heatmap
+- AI planning based on the timetable and free slots, draft-then-confirm import, rule-engine fallback
+- Day, week and month views; automatic upgrade of older databases at startup
 
-> Until the production server is live, clients can connect to a computer on the same LAN: enter its address (e.g. `http://192.168.1.5:5173`) on the Windows "Connect to server" page or under "Server" at the bottom of the Android login screen.
+**v3.0 · Intelligence and multi-platform**
+- Custom OpenAI-compatible models; two-part replies with per-day import; 10-turn memory and date-range recognition
+- Timetable import from academic-affairs web pages and AI recognition of images and PDFs
+- Study-time preferences used by the scheduler
+- Settings: email and phone binding, password change, sign out of other devices, data export, account deletion, feedback
+- Task search and bulk actions; recycle bin and archiving for study plans
+- Sign-in lockout and session revocation on password change
+- Desktop multi-column layout and PWA installation; Windows and Android clients
 
 ### Run locally
 
-Requires **Python 3.11+** (developed on 3.14) and **Node.js 20+**.
+Requires Python 3.11+ and Node.js 20+.
 
 ```bash
-# 1. Backend: http://127.0.0.1:8000, API docs at /docs
+# Backend: http://127.0.0.1:8000, API docs at /docs
 cd Backend+AI-interface
 python -m venv .venv
 .venv\Scripts\activate            # macOS / Linux: source .venv/bin/activate
 pip install -r requirements.txt
 python -m uvicorn main:app --reload
 
-# 2. Frontend: http://localhost:5173 (/api is proxied to port 8000)
+# Frontend: http://localhost:5173 (/api is forwarded to the backend)
 cd Frontend
 npm install
 npm run dev
 ```
 
-Open <http://localhost:5173> and click **"一键体验演示账号"** (try the demo account) to explore a pre-filled timetable, plans, 45 days of history and the leaderboard (`demo@example.com` / `demo123456`).
+Open <http://localhost:5173> and choose "一键体验演示账号" (demo account) to explore a pre-filled timetable, plans, study history and leaderboard (`demo@example.com` / `demo123456`).
 
-**Optional**: copy `deploy/backend.env.example` to `Backend+AI-interface/.env`. With `DEEPSEEK_API_KEY` set, planning uses the LLM; without it a local rule engine provides the full feature set. Each user can also add their own model under AI → Settings.
-
-**LAN demo**: run `npm run dev -- --host` in `Frontend/`, then open the printed `http://<your-ip>:5173` on any device on the same Wi-Fi.
-
-### Deploy (xueyeguanjia.com)
-
-| Address | Serves |
-|---|---|
-| `xueyeguanjia.com` / `www` | Landing & download page (redirects to the web app until it exists) |
-| `app.xueyeguanjia.com` | Web app |
-| `app.xueyeguanjia.com/api/` | Backend API used by web, Windows, Android and iOS clients |
-
-1. **Server**: a lightweight cloud instance in mainland China, 2 vCPU / 2 GB+, Ubuntu 22.04 / 24.04, prepaid (ICP filing requires ≥ 3 months remaining).
-2. **Domain & ICP filing**: complete real-name verification for `xueyeguanjia.com`, then submit a personal ICP filing through the cloud provider. Do not serve the domain publicly before approval.
-3. **DNS**: point `@`, `www` and `app` A records to the server IP.
-4. **One-command install** (dependencies, random secrets, frontend build, systemd + Nginx + HTTPS + daily backups):
-
-   ```bash
-   git clone https://github.com/TLOMMY/Integrated_study_planner.git
-   cd Integrated_study_planner
-   sudo bash deploy/install.sh you@example.com
-   ```
-
-5. **After launch**: show the ICP number in the site footer linking to `beian.miit.gov.cn`, and complete the public-security filing at `beian.mps.gov.cn` within 30 days.
-6. **Updates**: re-run the same command; code is pulled and the service restarted while data and configuration are kept.
-
-In production make sure `JWT_SECRET_KEY` is a long random string (generated by install.sh), `AI_ALLOW_PRIVATE_URLS=0` and `SEED_DEMO=0`; never commit `.env` or the database.
+To use a large language model, set `DEEPSEEK_API_KEY` in `Backend+AI-interface/.env` (see `deploy/backend.env.example` for all options), or add a model under AI → Settings after signing in. Without a model, the local rule engine handles planning.
 
 ### Build the clients
 
 ```bash
-# Windows: setup.exe and portable.exe in desktop/dist/
+# Windows: installer and portable exe in desktop/dist/
 cd desktop && npm install && npm run dist
 
-# Android: needs JDK 21 + Android SDK (platform 36, build-tools 36)
+# Android: requires JDK 21 and Android SDK (platform 36, build-tools 36)
 cd Frontend && npm run build && npx cap sync android
 cd android && gradlew assembleRelease
 ```
 
-Release signing reads `Frontend/android/keystore.properties` (not committed). Keep the keystore safe — without it you cannot ship updates to installed users.
-
 ### Project layout
 
 ```
-Backend+AI-interface/   FastAPI + SQLAlchemy 2 + SQLite backend, 91 pytest cases incl. API contract tests
-Frontend/               Vue 3 + Vite + Pinia + Tailwind (responsive phone / tablet / desktop, PWA)
-  android/              Capacitor Android project
-desktop/                Windows client (Electron shell)
-deploy/                 Server deployment scripts and configs
-docs/                   Screenshots and early database design docs
-data-import/            Timetable parsing prototypes and a sample timetable (used by tests)
+Backend+AI-interface/   Backend: FastAPI + SQLAlchemy 2 + SQLite
+Frontend/               Frontend: Vue 3 + Vite + Pinia + Tailwind CSS
+  android/              Android client (Capacitor)
+desktop/                Windows client (Electron)
+deploy/                 Server configuration files
+docs/                   Screenshots and database design documents
+data-import/            Timetable parsing prototypes and a sample timetable
 ```
-
-### Highlights
-
-- **One API envelope**: every response, including errors, is `{code, message, data}`; a contract test checks that every frontend call exists on the backend.
-- **Account security**: JWT auth with per-user isolation, PBKDF2 password hashes, lockout after 5 failed logins, other sessions revoked on password change, encrypted and masked API keys.
-- **Controllable AI**: drafts first, saved only on confirmation; every block is validated against real free slots, invalid blocks are dropped, skipped days are filled in, and failures fall back to the rule engine.
-- **Idempotent rewards**: XP is booked once per `(user, reason, reference)`, so repeated clicks never double-count.
-- **Recoverable data**: deleted plans go to a 30-day recycle bin; full data export and account deletion are available.
 
 ### Tests
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 91 cases, temporary database, no network
-cd Frontend && npm test && npm run build
+cd Backend+AI-interface && python -m pytest     # 91 backend cases, temporary database, no network access
+cd Frontend && npm test                          # 6 frontend unit tests
+cd Frontend && npm run build                     # production build
 ```
+
+Backend tests cover authentication and data isolation, timetable and import, tasks, motivation, AI planning and model integration, account security, recycle bin and bulk actions, plus a contract test that fails if the frontend calls any endpoint the backend does not provide.
 
 ### Roadmap
 
-- [ ] Production server at xueyeguanjia.com and landing page
-- [ ] iOS client (TestFlight)
-- [ ] Email / SMS verification codes
-- [ ] Admin console (users, feedback, usage)
-- [ ] Cross-device sync for AI chats and focus sessions; push reminders when the app is closed
+| Version | Status | Scope |
+|---|---|---|
+| v1.0 | ✅ Done | Foundations: backend framework, timetable parsing, task and plan APIs, DeepSeek integration, frontend skeleton |
+| v2.0 | ✅ Done | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
+| v3.0 | ✅ Done | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
+
+### AI contribution
+
+Claude contributed to the design and visual polish of the frontend.
 
 ### Team
 
-PuYu Project Team (璞玉计划项目小组).
+PuYu Project Team (璞玉计划项目小组)
