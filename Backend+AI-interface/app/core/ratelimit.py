@@ -44,5 +44,36 @@ def reset(key: str = None) -> None:
     with _lock:
         if key is None:
             _fails.clear()
+            _hits.clear()
         else:
             _fails.pop(key, None)
+
+
+# ---------------------------------------------------------------- 通用滑动窗口限流（验证码、错误上报、截图上传）
+_hits: Dict[str, List[float]] = {}
+
+
+def hit(bucket: str, key: str, limit: int, window_seconds: float) -> bool:
+    """记一次请求；窗口内超过 limit 次返回 False（本次不计入）。"""
+    now = time.monotonic()
+    name = f"{bucket}:{key}"
+    with _lock:
+        recent = [t for t in _hits.get(name, []) if now - t < window_seconds]
+        if len(recent) >= limit:
+            _hits[name] = recent
+            return False
+        recent.append(now)
+        _hits[name] = recent
+        # 防止键无限增长：偶尔清理一次过期的键
+        if len(_hits) > 5000:
+            for stale in [k for k, v in _hits.items() if not v or now - v[-1] > 86400]:
+                _hits.pop(stale, None)
+        return True
+
+
+def client_ip(request) -> str:
+    """取客户端 IP（反向代理时读 X-Forwarded-For 的第一个）。"""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()[:64]
+    return (request.client.host if request.client else "") or "unknown"

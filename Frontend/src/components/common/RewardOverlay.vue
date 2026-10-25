@@ -9,7 +9,8 @@ const current = computed(() => ui.celebrations[0])
 const pieces = Array.from({ length: 28 }, (_, i) => ({
   left: `${(i * 37) % 100}%`,
   delay: `${(i % 7) * 0.12}s`,
-  color: ['#4F6EF7', '#FF8A00', '#10B981', '#8B5CF6', '#F43F5E'][i % 5],
+  // 彩纸颜色取当前主题的分类配色（CSS 变量），切换主题自动跟随
+  color: `rgb(var(--c-chart-${[1, 4, 3, 2, 7][i % 5]}))`,
   size: 6 + (i % 3) * 3,
 }))
 
@@ -24,7 +25,7 @@ const headline = computed(() => {
 
 <template>
   <Transition enter-active-class="transition duration-200" enter-from-class="opacity-0" leave-active-class="transition duration-150" leave-to-class="opacity-0">
-    <div v-if="current" class="absolute inset-0 z-[90] flex items-center justify-center overflow-hidden bg-ink/55 px-8 backdrop-blur-sm" role="dialog" aria-modal="true">
+    <div v-if="current" class="absolute inset-0 z-[90] flex items-center justify-center overflow-hidden bg-scrim/55 px-8 backdrop-blur-sm" role="dialog" aria-modal="true">
       <span
         v-for="(p, i) in pieces"
         :key="`${current.id}-${i}`"
@@ -32,9 +33,9 @@ const headline = computed(() => {
         :style="{ left: p.left, animationDelay: p.delay, background: p.color, width: `${p.size}px`, height: `${p.size * 1.6}px` }"
       />
 
-      <div :key="current.id" class="relative w-full max-w-sm animate-pop rounded-[32px] bg-surface p-6 text-center shadow-2xl">
+      <div :key="current.id" class="relative w-full material max-w-sm animate-pop rounded-[32px] bg-surface p-6 text-center shadow-2xl">
         <div class="mx-auto -mt-14 mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-surface shadow-lift"
-             :class="current.level_up ? 'bg-xp text-white' : current.goal_just_reached ? 'bg-flame text-white' : 'bg-success text-white'">
+             :class="current.level_up ? 'bg-xp text-on-xp' : current.goal_just_reached ? 'bg-flame text-on-flame' : 'bg-success text-on-success'">
           <Icon :icon="current.level_up ? 'lucide:crown' : current.goal_just_reached ? 'lucide:flame' : 'lucide:award'" width="38" />
         </div>
         <h2 class="text-2xl font-black text-ink">{{ headline }}</h2>
@@ -47,7 +48,7 @@ const headline = computed(() => {
 
         <div v-if="current.new_achievements?.length" class="mt-4 space-y-2 text-left">
           <div v-for="item in current.new_achievements" :key="item.code" class="flex items-center gap-3 rounded-2xl bg-success-light p-3">
-            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success text-white">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-success text-on-success">
               <Icon :icon="item.icon" width="20" />
             </div>
             <div class="min-w-0 flex-1">

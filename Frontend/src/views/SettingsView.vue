@@ -3,6 +3,12 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import ThemeSection from '@/components/settings/ThemeSection.vue'
+import AccountExtras from '@/components/settings/AccountExtras.vue'
+import MyFeedback from '@/components/settings/MyFeedback.vue'
+import ShotPicker from '@/components/admin/ShotPicker.vue'
+import ReminderSection from '@/components/settings/ReminderSection.vue'
+import FocusSection from '@/components/settings/FocusSection.vue'
 import { feedbackApi, userApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
@@ -73,7 +79,9 @@ const run = async (fn, message) => {
   }
 }
 
-const saveEmail = () => run(() => auth.changeEmail({ email: form.email, password: form.password }), '邮箱已更新')
+// 绑定邮箱统一走 AccountExtras 的换绑流程（新邮箱需验证码）
+const accountExtras = ref(null)
+const openEmailChange = () => accountExtras.value?.openChange()
 const savePhone = (unbind = false) =>
   run(() => auth.changePhone({ phone: unbind ? '' : form.phone, password: form.password }), unbind ? '已解绑手机号' : '手机号已绑定')
 const savePassword = () => {
@@ -117,16 +125,32 @@ const savePrefs = async () => {
 }
 
 // ---------------------------------------------------------------- 反馈 / 数据
+// 截图（File 数组，最多 3 张）：先逐张上传，再随反馈提交返回的文件名
+const shots = ref([])
+const shotProgress = ref('')
 const submitFeedback = () => {
   if (feedback.content.trim().length < 5) return ui.toast('请至少写 5 个字描述问题', 'warning')
   return run(async () => {
+    const images = []
+    try {
+      for (const [i, file] of shots.value.entries()) {
+        shotProgress.value = `上传截图 ${i + 1}/${shots.value.length}…`
+        images.push((await feedbackApi.uploadImage(file)).name)
+      }
+    } finally {
+      shotProgress.value = ''
+    }
     await feedbackApi.submit({
       ...feedback,
+      images,
       page: String(route.query.from || document.referrer || location.pathname).slice(0, 200),
       client: navigator.userAgent.slice(0, 300),
     })
     Object.assign(feedback, { category: 'bug', content: '', contact: '' })
-  }, '感谢反馈！技术同学会尽快处理')
+    shots.value = []
+    // 通知「我的反馈」刷新
+    window.dispatchEvent(new Event('feedback:submitted'))
+  }, '感谢反馈！技术同学会尽快处理，回复会显示在「我的反馈」')
 }
 
 const exportData = () =>
@@ -159,7 +183,7 @@ const toggleReminder = () => {
 
 <template>
   <div class="scrollbar-hide h-full overflow-y-auto pb-24 lg:pb-10">
-    <header class="sticky top-0 z-10 flex items-center gap-3 bg-background/90 px-4 pb-3 pt-[calc(var(--safe-top)+16px)] backdrop-blur lg:px-10 lg:pt-8">
+    <header class="glass-bar sticky top-0 z-10 flex items-center gap-3 bg-background/90 px-4 pb-3 pt-[calc(var(--safe-top)+16px)] backdrop-blur lg:px-10 lg:pt-8">
       <button class="icon-btn lg:hidden" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
       <h1 class="text-lg font-black text-ink lg:text-[22px]">设置</h1>
     </header>
@@ -170,7 +194,7 @@ const toggleReminder = () => {
         <h2 class="mb-2 px-1 text-xs font-black text-ink-mute">账号与安全</h2>
         <p v-if="auth.isDemo" class="mb-2 rounded-2xl bg-flame-light px-3 py-2 text-xs font-semibold text-flame">演示账号不能修改邮箱、手机和密码，注册自己的账号后即可使用</p>
         <div class="card divide-y divide-ink-line/60 overflow-hidden">
-          <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left disabled:opacity-60" type="button" :disabled="auth.isDemo" @click="sheet = 'email'">
+          <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left disabled:opacity-60" type="button" :disabled="auth.isDemo" @click="openEmailChange">
             <Icon icon="lucide:mail" width="20" class="text-primary" />
             <span class="flex-1 text-sm font-semibold text-ink">绑定邮箱</span>
             <span class="max-w-[50%] truncate text-xs font-bold text-ink-mute">{{ user.email }}</span>
@@ -211,6 +235,11 @@ const toggleReminder = () => {
           </button>
         </div>
 
+        <AccountExtras ref="accountExtras" />
+        <ReminderSection />
+        <FocusSection />
+        <ThemeSection />
+
         <h2 class="mb-2 mt-5 px-1 text-xs font-black text-ink-mute">帮助与数据</h2>
         <div class="card divide-y divide-ink-line/60 overflow-hidden">
           <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left" type="button" @click="sheet = 'feedback'">
@@ -232,6 +261,7 @@ const toggleReminder = () => {
             <Icon icon="lucide:chevron-right" width="16" class="text-ink-mute" />
           </button>
         </div>
+        <MyFeedback />
       </section>
 
       <!-- 学习时段偏好 -->
@@ -309,14 +339,6 @@ const toggleReminder = () => {
     </div>
 
     <!-- 弹窗 -->
-    <BottomSheet :open="sheet === 'email'" title="绑定邮箱" subtitle="换绑后用新邮箱登录" @close="sheet = ''">
-      <div class="space-y-3 pb-2">
-        <p class="text-xs text-ink-mute">当前：{{ user.email }}</p>
-        <input v-model="form.email" class="field" type="email" placeholder="新邮箱" autocomplete="email" />
-        <input v-model="form.password" class="field" type="password" placeholder="当前密码（验证身份）" autocomplete="current-password" />
-      </div>
-      <template #footer><button class="btn-primary w-full" type="button" :disabled="busy || !form.email || !form.password" @click="saveEmail">确认换绑</button></template>
-    </BottomSheet>
 
     <BottomSheet :open="sheet === 'phone'" title="绑定手机号" subtitle="用于找回账号；短信验证将在接入短信服务后开启" @close="sheet = ''">
       <div class="space-y-3 pb-2">
@@ -347,9 +369,10 @@ const toggleReminder = () => {
         </div>
         <textarea v-model="feedback.content" class="field min-h-[140px] resize-none" maxlength="2000" placeholder="请描述遇到的问题：在哪个页面、做了什么操作、看到了什么结果…" />
         <p class="num text-right text-[11px] text-ink-mute">{{ feedback.content.length }}/2000</p>
+        <ShotPicker v-model="shots" />
         <input v-model="feedback.contact" class="field" maxlength="100" placeholder="联系方式（选填，微信 / QQ / 邮箱）" />
       </div>
-      <template #footer><button class="btn-primary w-full" type="button" :disabled="busy" @click="submitFeedback"><Icon icon="lucide:send" width="16" />提交反馈</button></template>
+      <template #footer><button class="btn-primary w-full" type="button" :disabled="busy" @click="submitFeedback"><Icon :icon="busy ? 'lucide:loader-circle' : 'lucide:send'" width="16" :class="busy && 'animate-spin'" />{{ shotProgress || '提交反馈' }}</button></template>
     </BottomSheet>
 
     <BottomSheet :open="sheet === 'delete'" title="注销账号" @close="sheet = ''">
@@ -357,7 +380,7 @@ const toggleReminder = () => {
         <p class="rounded-2xl bg-danger-light px-3 py-2.5 text-xs font-semibold leading-5 text-danger">注销后，课表、任务、学习计划、专注记录、等级与成就会被永久删除。建议先「导出我的数据」备份。</p>
         <input v-model="form.password" class="field" type="password" placeholder="输入密码确认" autocomplete="current-password" />
       </div>
-      <template #footer><button class="btn w-full bg-danger text-white" type="button" :disabled="busy || !form.password" @click="deleteAccount">永久注销</button></template>
+      <template #footer><button class="btn w-full bg-danger text-on-danger" type="button" :disabled="busy || !form.password" @click="deleteAccount">永久注销</button></template>
     </BottomSheet>
   </div>
 </template>

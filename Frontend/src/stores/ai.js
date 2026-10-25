@@ -1,73 +1,54 @@
 import { defineStore } from 'pinia'
 import { aiApi } from '@/api'
+import { agentApi, canStream, streamChat } from '@/api/agent'
 import { useUiStore } from './ui'
 import { useTasksStore } from './tasks'
 import { useTimetableStore } from './timetable'
 
-const LIMIT = 40
-const HISTORY = 20
+// v2 版保存在浏览器本地的对话；首次进入时迁移成一条服务器会话后清除
+const legacyKey = (userId) => `ai-chat-v2-${userId}`
+const currentKey = (userId) => `ai-conv-${userId}`
+let seq = 0
 
-/** 把一版计划压缩成给模型看的文字摘要：标题、范围、每天的学习块（每天最多列 4 个）。 */
-const summarize = (m) => {
+/** 旧版助手消息（advice + 结构化计划）压缩成一段文字，迁移后模型仍能看懂上下文。 */
+const legacyText = (m) => {
   const d = m.draft
-  if (!d) return (m.text || '').slice(0, 500)
-  const days = new Map()
-  for (const t of d.tasks || []) {
-    if (!days.has(t.date)) days.set(t.date, [])
-    days.get(t.date).push(`${t.start_time} ${t.title} ${t.duration_minutes}分`)
-  }
-  const lines = [...days.entries()].map(([date, items]) => `${date.slice(5)}：${items.slice(0, 4).join('；')}${items.length > 4 ? `等${items.length}个` : ''}`)
-  const courses = (d.courses || []).map((c) => `${c.course_name} 周${c.day_of_week} ${c.start_period}-${c.end_period}节`)
+  if (!d) return (m.text || '').slice(0, 3800)
+  const tasks = (d.tasks || []).slice(0, 12).map((t) => `${t.date.slice(5)} ${t.start_time} ${t.title}`)
   return [
-    `【上一版计划】${d.title}（${d.start_date} 至 ${d.end_date}，每天 ${d.daily_minutes} 分钟，科目：${(d.subjects || []).join('、')}）`,
-    ...lines,
-    courses.length ? `课程：${courses.join('；')}` : '',
-    m.saved ? '（学生已导入此计划）' : '',
-    `建议摘要：${(d.advice || '').replace(/\s+/g, ' ').slice(0, 300)}`,
-  ].filter(Boolean).join('\n').slice(0, 1500)
+    d.advice || m.text || '',
+    `【当时的计划】${d.title}（${d.start_date} 至 ${d.end_date}）${m.saved ? '，已导入' : ''}`,
+    tasks.join('；'),
+  ].filter(Boolean).join('\n').slice(0, 3800)
 }
-let seq = Date.now()
 
-// v2：回复拆为 advice + 结构化 plan，旧格式的本地记录不再兼容
-const storageKey = (userId) => `ai-chat-v2-${userId}`
-
-/** 快捷调整：在上一次请求参数上打补丁再重新生成。 */
-export const ADJUSTMENTS = [
-  { key: 'variant', label: '换一版', icon: 'lucide:shuffle' },
-  { key: 'lighter', label: '轻松一点', icon: 'lucide:feather' },
-  { key: 'harder', label: '再多一点', icon: 'lucide:flame' },
-  { key: 'evening', label: '只排晚上', icon: 'lucide:moon' },
-  { key: 'longer', label: '延长一周', icon: 'lucide:calendar-plus' },
-]
-
-const patch = (request, draft, key) => {
-  const next = { ...request, start_date: draft.start_date, days: draft.days, daily_minutes: draft.daily_minutes }
-  if (key === 'variant') next.variant = (request.variant || 0) + 1
-  if (key === 'lighter') next.daily_minutes = Math.max(30, Math.round(draft.daily_minutes * 0.7))
-  if (key === 'harder') next.daily_minutes = Math.min(360, Math.round(draft.daily_minutes * 1.3))
-  if (key === 'evening') next.prefer = 'evening'
-  if (key === 'longer') next.days = Math.min(31, draft.days + 7)
-  return next
-}
+const emptyMeta = () => ({ reasoning: '', tools: [], proposals: [], engine: '', model: '' })
 
 export const useAiStore = defineStore('ai', {
   state: () => ({
     userId: null,
+    loaded: false,
+    conversations: [],
+    currentId: null,
     messages: [],
-    thinking: false,
+    loadingMessages: false,
+    streaming: false,
+    controller: null,
     engine: { provider: 'rule', label: '本地规则引擎' },
     settings: null,
   }),
 
+  getters: {
+    current: (state) => state.conversations.find((c) => c.id === state.currentId) || null,
+    // 兼容旧页面里的 ai.thinking
+    thinking: (state) => state.streaming,
+  },
+
   actions: {
     init(userId) {
       if (this.userId === userId) return
+      this.$reset()
       this.userId = userId
-      try {
-        this.messages = JSON.parse(localStorage.getItem(storageKey(userId)) || '[]')
-      } catch {
-        this.messages = []
-      }
       this.refreshEngine()
     },
 
@@ -75,98 +56,225 @@ export const useAiStore = defineStore('ai', {
       return aiApi.health().then((data) => (this.engine = data)).catch(() => {})
     },
 
-    persist() {
-      if (!this.userId) return
-      localStorage.setItem(storageKey(this.userId), JSON.stringify(this.messages.slice(-LIMIT)))
+    // ---------------------------------------------------------------- 会话
+    async ensureLoaded() {
+      if (this.loaded) return
+      await this.migrateLegacy()
+      await this.loadConversations()
+      this.loaded = true
+      const saved = Number(localStorage.getItem(currentKey(this.userId)))
+      const target = this.conversations.find((c) => c.id === saved) || this.conversations[0]
+      if (target) await this.select(target.id)
     },
 
-    clear() {
+    async loadConversations() {
+      const data = await agentApi.list()
+      this.conversations = data.items
+    },
+
+    async migrateLegacy() {
+      if (!this.userId) return
+      let old = []
+      try {
+        old = JSON.parse(localStorage.getItem(legacyKey(this.userId)) || '[]')
+      } catch {
+        old = []
+      }
+      const messages = old
+        .filter((m) => !m.error && (m.text || m.draft))
+        .slice(-80)
+        .map((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.role === 'user' ? String(m.text).slice(0, 3800) : legacyText(m) }))
+        .filter((m) => m.content.trim())
+      if (!messages.length) {
+        localStorage.removeItem(legacyKey(this.userId))
+        return
+      }
+      try {
+        await agentApi.importLegacy({ title: '之前的对话', messages })
+        localStorage.removeItem(legacyKey(this.userId))
+      } catch (error) {
+        console.warn('旧对话迁移失败，下次进入再试', error)
+      }
+    },
+
+    async select(id) {
+      if (this.streaming) return
+      this.currentId = id
+      localStorage.setItem(currentKey(this.userId), String(id))
+      this.loadingMessages = true
+      try {
+        const data = await agentApi.messages(id)
+        if (this.currentId === id) this.messages = data.items
+      } catch (error) {
+        useUiStore().fail(error)
+        if (error.status === 404) {
+          this.conversations = this.conversations.filter((c) => c.id !== id)
+          this.newConversation()
+        }
+      } finally {
+        this.loadingMessages = false
+      }
+    },
+
+    /** 只清空界面；第一次发送时才在服务器上创建，避免产生一堆空对话。 */
+    newConversation() {
+      if (this.streaming) return
+      this.currentId = null
       this.messages = []
-      this.persist()
+      localStorage.removeItem(currentKey(this.userId))
+    },
+
+    async rename(id, title) {
+      const data = await agentApi.rename(id, title)
+      this.upsert(data)
+    },
+
+    async remove(conversation) {
+      const ok = await useUiStore().confirm({
+        title: '删除对话', message: `删除「${conversation.title}」？已导入的任务和课程不受影响。`, confirmText: '删除', danger: true,
+      })
+      if (!ok) return
+      await agentApi.remove(conversation.id)
+      this.conversations = this.conversations.filter((c) => c.id !== conversation.id)
+      if (this.currentId === conversation.id) this.newConversation()
+    },
+
+    upsert(conversation, toTop = false) {
+      if (!conversation) return
+      const rest = this.conversations.filter((c) => c.id !== conversation.id)
+      const index = this.conversations.findIndex((c) => c.id === conversation.id)
+      if (toTop || index === -1) this.conversations = [conversation, ...rest]
+      else this.conversations.splice(index, 1, conversation)
+    },
+
+    // ---------------------------------------------------------------- 对话
+    async send(text) {
+      const message = String(text || '').trim()
+      if (!message || this.streaming) return
+      const ui = useUiStore()
+      this.streaming = true
+      try {
+        if (!this.currentId) {
+          const created = await agentApi.create()
+          this.upsert(created, true)
+          this.currentId = created.id
+          localStorage.setItem(currentKey(this.userId), String(created.id))
+        }
+      } catch (error) {
+        this.streaming = false
+        ui.fail(error)
+        return
+      }
+      const conversationId = this.currentId
+      this.messages.push({ id: `u${++seq}`, role: 'user', content: message, meta: {}, pending: true })
+      this.messages.push({ id: `a${++seq}`, role: 'assistant', content: '', meta: emptyMeta(), live: true, status: '正在连接…' })
+      const live = this.messages[this.messages.length - 1]
+      const userTemp = this.messages[this.messages.length - 2]
+
+      const finish = (data) => {
+        if (this.currentId !== conversationId) return
+        const index = this.messages.indexOf(live)
+        if (data?.message && index !== -1) this.messages.splice(index, 1, data.message)
+        const userIndex = this.messages.indexOf(userTemp)
+        if (data?.user_message && userIndex !== -1) this.messages.splice(userIndex, 1, data.user_message)
+        if (data?.conversation) this.upsert(data.conversation, true)
+      }
+      const onEvent = (event, data) => {
+        if (event === 'status') live.status = data.text
+        else if (event === 'reasoning') {
+          live.meta.reasoning += data.delta
+          live.status = '正在思考…'
+        } else if (event === 'text') {
+          // replace：后端把调工具前的过渡语移进了思考过程，用它覆盖正文
+          if (typeof data.replace === 'string') live.content = data.replace
+          live.content += data.delta
+          live.status = ''
+        } else if (event === 'tool') {
+          const found = live.meta.tools.find((t) => t.id === data.id)
+          if (found) Object.assign(found, data)
+          else live.meta.tools.push({ ...data })
+          live.status = data.status === 'running' ? `${data.label}…` : live.status
+        } else if (event === 'proposal') {
+          const list = live.meta.proposals
+          const index = data.replaces ? list.findIndex((p) => p.id === data.replaces) : -1
+          if (index !== -1) list.splice(index, 1, data.proposal)
+          else list.push(data.proposal)
+        } else if (event === 'error') {
+          live.meta.error = data.message
+        } else if (event === 'done') {
+          finish(data)
+        }
+      }
+
+      try {
+        if (canStream()) {
+          this.controller = new AbortController()
+          await streamChat(conversationId, message, onEvent, { signal: this.controller.signal })
+        } else {
+          finish(await agentApi.chatSync(conversationId, message))
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') {
+          live.meta.error = '已停止生成'
+        } else {
+          live.meta.error = error.message || 'AI 服务暂时不可用'
+        }
+      } finally {
+        live.live = false
+        live.status = ''
+        this.streaming = false
+        this.controller = null
+        this.refreshEngine()
+      }
+      // 中途停止 / 断网：以服务器保存的为准
+      if (live.meta.error && this.currentId === conversationId && this.messages.includes(live)) {
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        if (!this.streaming && this.currentId === conversationId) {
+          const keep = live.meta.error
+          await this.select(conversationId)
+          const last = this.messages[this.messages.length - 1]
+          if (!last || last.role !== 'assistant') {
+            this.messages.push({ id: `a${++seq}`, role: 'assistant', content: '', meta: { ...emptyMeta(), error: keep } })
+          }
+        }
+      }
+    },
+
+    stop() {
+      this.controller?.abort()
+    },
+
+    /** 点选追问选项：标记已回答并作为下一条消息发送。 */
+    answer(proposal, option) {
+      if (this.streaming) return
+      proposal.answered = option
+      this.send(option)
     },
 
     /**
-     * 最近 10 轮（20 条）对话。助手回合除了建议，还附上那一版计划的摘要（日期范围、每天安排），
-     * 模型追问时才"记得"自己排过什么——之前只传 6 条且只有建议文字，3-4 轮后就会丢失要点。
+     * 导入提案：items 为用户编辑、勾选后的条目。逐条返回成功 / 失败原因，写回卡片。
      */
-    history() {
-      return this.messages
-        .filter((m) => !m.error)
-        .slice(-HISTORY)
-        .map((m) => ({ role: m.role, content: m.role === 'assistant' ? summarize(m) : m.text.slice(0, 500) }))
-    },
-
-    /** 上一版计划的结构化记忆（科目、日期范围、时长、偏好、要点），追问时由后端在此基础上修改。 */
-    memory() {
-      const last = [...this.messages].reverse().find((m) => m.role === 'assistant' && m.draft?.memory)
-      return last?.draft.memory || null
-    },
-
-    async ask(text) {
-      const message = text.trim()
-      if (!message || this.thinking) return
-      const history = this.history()
-      const memory = this.memory()
-      this.messages.push({ id: ++seq, role: 'user', text: message })
-      await this.run({ message, history, memory })
-    },
-
-    async adjust(draftMessage, key) {
-      const label = ADJUSTMENTS.find((item) => item.key === key)?.label || '调整'
-      const history = this.history()
-      this.messages.push({ id: ++seq, role: 'user', text: label })
-      await this.run({ ...patch(draftMessage.request, draftMessage.draft, key), history, memory: draftMessage.draft.memory || null })
-    },
-
-    async run(request) {
-      this.thinking = true
-      this.persist()
-      try {
-        const draft = await aiApi.draft(request)
-        const { history, memory, ...stored } = request
-        this.messages.push({ id: ++seq, role: 'assistant', text: draft.reply, draft, request: stored, saved: false })
-        this.refreshEngine()
-      } catch (error) {
-        this.messages.push({ id: ++seq, role: 'assistant', text: error.message || 'AI 服务暂时不可用', error: true })
-      } finally {
-        this.thinking = false
-        this.persist()
-      }
-    },
-
-    /** 采纳：tasks 为用户勾选的那几天的学习块；课程可单独选择是否导入。 */
-    async adopt(message, { tasks = message.draft.tasks, importCourses = true } = {}) {
+    async applyProposal(message, proposal, items) {
       const ui = useUiStore()
-      const { draft } = message
-      const result = await aiApi.commit({
-        title: draft.title,
-        goal: draft.goal,
-        summary: draft.summary,
-        advice: draft.advice,
-        start_date: draft.start_date,
-        end_date: draft.end_date,
-        days: draft.days,
-        provider: draft.provider,
-        model: draft.model,
-        insights: draft.insights,
-        tasks,
-        courses: draft.courses || [],
-        import_tasks: tasks.length > 0,
-        import_courses: importCourses,
+      const result = await agentApi.apply({
+        kind: proposal.type,
+        items,
+        title: proposal.title || null,
+        goal: proposal.summary || null,
+        plan_id: proposal.plan_id || null,
+        message_id: typeof message.id === 'number' ? message.id : null,
+        proposal_id: proposal.id,
       })
-      message.saved = true
-      message.planId = result.plan?.id || null
-      message.result = {
-        tasks: result.plan?.task_total || 0,
-        courses: result.courses_saved.length,
-        skipped: result.courses_skipped,
-      }
-      this.persist()
+      proposal.results = { ...(proposal.results || {}) }
+      for (const r of result.results) if (r.key) proposal.results[r.key] = r
+      proposal.applied = true
+      if (result.plan?.id) proposal.plan_id = result.plan.id
       ui.reward(result.reward)
-      ui.success(`已加入：${[message.result.tasks && `${message.result.tasks} 个任务`, message.result.courses && `${message.result.courses} 门课程`].filter(Boolean).join('、') || '无'}`)
-      if (result.courses_skipped.length) ui.toast(`${result.courses_skipped.length} 门课程与现有课表冲突，已跳过`, 'warning', 3600)
-      useTasksStore().afterChange()
-      if (result.courses_saved.length) useTimetableStore().load().catch(() => {})
+      if (result.ok_count && !result.fail_count) ui.success(`已导入 ${result.ok_count} 条`)
+      else if (result.ok_count) ui.toast(`已导入 ${result.ok_count} 条，${result.fail_count} 条未导入，原因见卡片`, 'warning', 3600)
+      else ui.toast('全部未能导入，请查看每条的原因并修改后重试', 'error', 3600)
+      if (proposal.type !== 'courses') useTasksStore().afterChange()
+      if (proposal.type !== 'tasks') useTimetableStore().load().catch(() => {})
       return result
     },
 
@@ -184,6 +292,9 @@ export const useAiStore = defineStore('ai', {
     },
     activate(active) {
       return this.applySettings(aiApi.activate(active), '已切换模型')
+    },
+    setThinking(thinking) {
+      return this.applySettings(aiApi.setThinking(thinking), null)
     },
     saveProvider(payload, id = null) {
       return this.applySettings(id ? aiApi.updateProvider(id, payload) : aiApi.createProvider(payload), id ? '已保存' : '已添加并启用')

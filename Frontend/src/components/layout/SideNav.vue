@@ -34,13 +34,19 @@ const GROUPS = [
   },
 ]
 
+// 管理员额外显示「管理后台」入口
+const groups = computed(() =>
+  auth.user?.is_admin
+    ? [...GROUPS, { title: '管理', items: [{ name: 'admin', label: '管理后台', icon: 'lucide:shield-check', to: '/admin' }] }]
+    : GROUPS,
+)
 const level = computed(() => game.level)
 const streak = computed(() => game.streak)
 const startFocus = () => router.push({ name: 'focus' })
 </script>
 
 <template>
-  <aside class="flex h-full w-60 shrink-0 flex-col border-r border-ink-line/70 bg-surface px-3 py-5" aria-label="主导航">
+  <aside class="glass-bar flex h-full w-60 shrink-0 flex-col border-r border-ink-line/70 bg-surface px-3 py-5" aria-label="主导航">
     <RouterLink to="/today-task" class="flex items-center gap-2.5 px-3">
       <img src="/app-icon.svg" alt="" class="h-9 w-9 rounded-xl shadow-lift" />
       <div class="leading-tight">
@@ -55,7 +61,7 @@ const startFocus = () => router.push({ name: 'focus' })
     </button>
 
     <nav class="scrollbar-hide mt-5 flex-1 space-y-5 overflow-y-auto">
-      <div v-for="group in GROUPS" :key="group.title">
+      <div v-for="group in groups" :key="group.title">
         <p class="mb-1.5 px-3 text-[10px] font-black tracking-wider text-ink-mute">{{ group.title }}</p>
         <RouterLink
           v-for="item in group.items"

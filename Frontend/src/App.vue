@@ -1,8 +1,15 @@
 <script setup>
+import { watch } from 'vue'
 import { RouterView } from 'vue-router'
 import ToastHost from '@/components/common/ToastHost.vue'
 import ConfirmHost from '@/components/common/ConfirmHost.vue'
 import RewardOverlay from '@/components/common/RewardOverlay.vue'
+import { useAuthStore } from '@/stores/auth'
+import { syncThemeFromAccount } from '@/composables/useTheme'
+
+// 登录 / 拉取用户信息后，账号里保存的主题与本地不同时以账号为准（换设备也能保持同一主题）
+const auth = useAuthStore()
+watch(() => auth.user?.theme, (theme) => syncThemeFromAccount(theme), { immediate: true })
 </script>
 
 <template>

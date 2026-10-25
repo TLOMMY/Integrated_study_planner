@@ -2,6 +2,8 @@
 """课表接口：周视图、课程增删改（带冲突检测）、学期设置。"""
 
 import json
+import secrets
+from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter
@@ -9,9 +11,9 @@ from fastapi import APIRouter
 from app.api.deps import DB, CurrentUser
 from app.core import timeutil
 from app.core.errors import ApiError, ok
-from app.models import Timetable, User
-from app.schemas import CourseIn, TimetableSettingsIn
-from app.services import schedule
+from app.models import ImportLog, Timetable, TimetableShare, User
+from app.schemas import CourseIn, ShareImportIn, TimetableSettingsIn
+from app.services import gamification, schedule
 
 router = APIRouter(prefix="/timetable", tags=["课表"])
 
@@ -72,6 +74,85 @@ def update_settings(payload: TimetableSettingsIn, user: CurrentUser, db: DB):
     db.commit()
     db.refresh(user)
     return ok(timetable_payload(db, user), "学期设置已保存")
+
+
+def _load_share(db, code: str) -> TimetableShare:
+    share = db.query(TimetableShare).filter(TimetableShare.code == schedule.normalize_share_code(code)).first()
+    if share is None:
+        raise ApiError(404, "分享码不存在，请检查是否输入正确")
+    if share.expires_at and share.expires_at < timeutil.now():
+        raise ApiError(410, "分享码已过期，请让同学重新生成")
+    return share
+
+
+def _share_dict(db, share: TimetableShare, user: User) -> dict:
+    payload = json.loads(share.payload)
+    owner = db.get(User, share.user_id)
+    return {
+        "code": share.code,
+        "semester": share.semester,
+        "owner_name": (owner.full_name or owner.username) if owner else "已注销的同学",
+        "owner_avatar": (owner.avatar if owner else None) or "🦉",
+        "is_mine": share.user_id == user.id,
+        "course_count": len(payload.get("courses") or []),
+        "courses": payload.get("courses") or [],
+        "period_times": payload.get("period_times") or [],
+        "total_weeks": payload.get("total_weeks"),
+        "semester_start": payload.get("semester_start"),
+        "import_count": int(share.import_count or 0),
+        "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+        "created_at": share.created_at.isoformat() if share.created_at else None,
+    }
+
+
+@router.post("/share", summary="生成课表分享码（当前学期课程 + 节次设置快照，7 天有效）")
+def create_share(user: CurrentUser, db: DB):
+    snapshot = schedule.share_snapshot(db, user)
+    if not snapshot["courses"]:
+        raise ApiError(422, "当前学期还没有课程，先添加或导入课表再分享")
+    code = ""
+    for _ in range(20):
+        code = "".join(secrets.choice(schedule.SHARE_ALPHABET) for _ in range(8))
+        if not db.query(TimetableShare.id).filter(TimetableShare.code == code).first():
+            break
+    share = TimetableShare(
+        user_id=user.id, code=code, semester=snapshot["semester"],
+        payload=json.dumps(snapshot, ensure_ascii=False),
+        expires_at=timeutil.now() + timedelta(days=schedule.SHARE_DAYS),
+    )
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+    return ok(_share_dict(db, share, user), "分享码已生成，7 天内有效")
+
+
+@router.get("/share/{code}", summary="预览分享的课表（课程列表、分享者昵称）")
+def preview_share(code: str, user: CurrentUser, db: DB):
+    return ok(_share_dict(db, _load_share(db, code), user))
+
+
+@router.post("/share/{code}/import", summary="把分享的课表导入到自己的当前学期（冲突的课跳过并说明原因）")
+def import_share(code: str, payload: ShareImportIn, user: CurrentUser, db: DB):
+    share = _load_share(db, code)
+    snapshot = json.loads(share.payload)
+    tracker = gamification.RewardTracker(db, user)
+    result = schedule.import_shared_courses(db, user, snapshot, payload.mode, payload.use_period_times)
+    if result["added_count"]:
+        share.import_count = int(share.import_count or 0) + 1
+        db.add(ImportLog(user_id=user.id, import_type="share", file_name=f"分享码 {share.code}",
+                         success_count=result["added_count"], fail_count=result["skipped_count"]))
+    db.flush()
+    result["reward"] = tracker.finish()
+    db.commit()
+    db.refresh(user)
+    result["timetable"] = timetable_payload(db, user)
+    if not result["added_count"]:
+        message = "没有导入新课程" + (f"，{result['skipped_count']} 门已跳过" if result["skipped_count"] else "")
+    elif result["skipped_count"]:
+        message = f"已导入 {result['added_count']} 门课，{result['skipped_count']} 门因冲突跳过"
+    else:
+        message = f"已导入 {result['added_count']} 门课"
+    return ok(result, message)
 
 
 @router.post("", summary="添加课程（时间冲突返回 409，force=true 可强制保存）")

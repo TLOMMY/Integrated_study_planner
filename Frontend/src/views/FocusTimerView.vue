@@ -1,8 +1,10 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { taskApi } from '@/api'
+import { useFocusSync } from '@/composables/useFocusSync'
+import { NOISES, guardEnabled } from '@/utils/noise'
 import { useFocusStore } from '@/stores/focus'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
@@ -48,6 +50,14 @@ const ring = computed(() => {
 })
 
 const label = computed(() => ({ idle: '准备开始', running: '专注中', paused: '已暂停', finished: '本次完成' })[focus.status])
+
+// 专注页不在 MainLayout 里，这里也挂上跨设备同步（内部有引用计数，不会重复轮询）
+useFocusSync()
+const noiseOpen = ref(false)
+const guardOn = guardEnabled()
+const currentNoise = computed(() => NOISES.find((n) => n.key === focus.noiseKind) || NOISES[0])
+// 离开专注页时停掉"试听"（专注进行中的白噪音继续播放）
+onBeforeUnmount(() => focus.stopPreview())
 
 onMounted(async () => {
   focus.restore()
@@ -104,7 +114,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
 </script>
 
 <template>
-  <div class="relative flex h-full flex-col overflow-hidden bg-gradient-to-b from-[#1E2A5E] via-[#26357A] to-[#3B2C7A] text-white">
+  <div class="relative flex h-full flex-col overflow-hidden bg-gradient-to-b from-deep-from via-deep-via to-deep-to text-white">
     <div class="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-primary/30 blur-3xl" />
     <div class="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-xp/30 blur-3xl" />
 
@@ -116,13 +126,56 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
         <p class="text-[10px] font-bold tracking-[0.3em] text-white/50">FOCUS</p>
         <p class="max-w-[200px] truncate text-sm font-bold">{{ focus.task?.title || '自由专注' }}</p>
       </div>
-      <span class="w-10" />
+      <button
+        class="flex h-10 w-10 items-center justify-center rounded-full"
+        :class="focus.noiseKind !== 'off' ? 'bg-white text-deep-ink' : 'bg-white/10'"
+        type="button"
+        :aria-label="`白噪音：${currentNoise.label}`"
+        :aria-expanded="noiseOpen"
+        @click="noiseOpen = !noiseOpen"
+      >
+        <Icon :icon="focus.noiseKind !== 'off' ? currentNoise.icon : 'lucide:headphones'" width="18" />
+      </button>
     </header>
+
+    <!-- 白噪音面板 -->
+    <Transition enter-active-class="transition duration-200" enter-from-class="-translate-y-2 opacity-0" leave-active-class="transition duration-150" leave-to-class="-translate-y-2 opacity-0">
+      <section v-if="noiseOpen" class="relative z-10 mx-5 mt-3 rounded-3xl bg-white/10 p-3 backdrop-blur" aria-label="白噪音">
+        <div class="grid grid-cols-5 gap-1.5">
+          <button
+            v-for="n in NOISES"
+            :key="n.key"
+            type="button"
+            class="flex flex-col items-center gap-1 rounded-2xl py-2 text-[11px] font-bold transition"
+            :class="focus.noiseKind === n.key ? 'bg-white text-deep-ink' : 'text-white/75 hover:bg-white/10'"
+            :aria-pressed="focus.noiseKind === n.key"
+            @click="focus.setNoise(n.key)"
+          >
+            <Icon :icon="n.icon" width="18" />{{ n.label }}
+          </button>
+        </div>
+        <label class="mt-3 flex items-center gap-3 px-1">
+          <Icon icon="lucide:volume-2" width="16" class="shrink-0 text-white/70" />
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            :value="focus.noiseVolume"
+            class="h-1.5 flex-1 accent-white"
+            aria-label="白噪音音量"
+            @input="focus.setNoiseVolume(Number($event.target.value))"
+          />
+          <span class="num w-8 text-right text-[11px] text-white/70">{{ Math.round(focus.noiseVolume * 100) }}</span>
+        </label>
+        <p class="mt-2 px-1 text-[10px] text-white/50">声音在本机实时生成，随专注开始 / 暂停自动播放、停止；会记住你的选择。</p>
+      </section>
+    </Transition>
 
     <main class="relative flex flex-1 flex-col items-center justify-center px-8">
       <div class="relative">
         <svg width="260" height="260" class="-rotate-90">
-          <circle cx="130" cy="130" :r="ring.r" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="10" />
+          <circle cx="130" cy="130" :r="ring.r" fill="none" stroke="currentColor" stroke-opacity=".12" stroke-width="10" />
           <circle
             cx="130"
             cy="130"
@@ -137,8 +190,8 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
           />
           <defs>
             <linearGradient id="focus-gradient" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stop-color="#9DB0FF" />
-              <stop offset="100%" stop-color="#FFB86B" />
+              <stop offset="0%" style="stop-color: rgb(var(--c-ring-start))" />
+              <stop offset="100%" style="stop-color: rgb(var(--c-ring-end))" />
             </linearGradient>
           </defs>
         </svg>
@@ -146,6 +199,9 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
           <span class="num text-[64px] font-black leading-none tracking-tight">{{ focus.status === 'idle' ? `${String(focus.plannedMinutes).padStart(2, '0')}:00` : focus.clock }}</span>
           <span class="mt-2 flex items-center gap-1.5 text-xs font-bold text-white/60">
             <span v-if="focus.status === 'running'" class="h-1.5 w-1.5 animate-pulse rounded-full bg-flame" />{{ label }}
+          </span>
+          <span v-if="focus.active && focus.distractions" class="mt-1 flex items-center gap-1 text-[10px] font-bold text-white/50">
+            <Icon icon="lucide:eye-off" width="11" />切出 {{ focus.distractions }} 次
           </span>
         </div>
       </div>
@@ -158,7 +214,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
             :key="m"
             type="button"
             class="num rounded-2xl px-3.5 py-2 text-sm font-black transition"
-            :class="minutes === m ? 'bg-white text-[#26357A]' : 'bg-white/10 text-white/80 hover:bg-white/20'"
+            :class="minutes === m ? 'bg-white text-deep-ink' : 'bg-white/10 text-white/80 hover:bg-white/20'"
             @click="minutes = m; customOpen = false"
           >
             {{ m }}'
@@ -166,7 +222,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
           <button
             type="button"
             class="flex items-center gap-1 rounded-2xl px-3.5 py-2 text-sm font-black transition"
-            :class="isCustom ? 'bg-white text-[#26357A]' : 'bg-white/10 text-white/80 hover:bg-white/20'"
+            :class="isCustom ? 'bg-white text-deep-ink' : 'bg-white/10 text-white/80 hover:bg-white/20'"
             :aria-expanded="customOpen"
             @click="openCustom"
           >
@@ -186,7 +242,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
             autofocus
           />
           <span class="text-sm text-white/70">分钟</span>
-          <button class="rounded-2xl bg-white px-3.5 py-2 text-sm font-black text-[#26357A]" type="submit">确定</button>
+          <button class="rounded-2xl bg-white px-3.5 py-2 text-sm font-black text-deep-ink" type="submit">确定</button>
         </form>
       </div>
 
@@ -196,12 +252,16 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
           {{ focus.lastResult?.minutes ? `专注了 ${focus.lastResult.minutes} 分钟` : '本次未计入' }}
         </p>
         <p v-if="focus.lastResult?.task?.focus_minutes" class="mt-1 text-xs text-white/60">「{{ focus.lastResult.task.title }}」累计专注 {{ focus.lastResult.task.focus_minutes }} 分钟</p>
+        <p v-if="focus.lastResult?.duplicate" class="mt-1 text-xs text-white/60">这一轮已在其他设备上记录，不会重复计入</p>
+        <p v-if="focus.lastResult?.minutes && guardOn" class="mt-1 text-xs text-white/60">
+          {{ focus.lastResult?.distractions ? `本轮切出 ${focus.lastResult.distractions} 次，下次试试把手机放远一点` : '本轮没有切出页面，专注力满分' }}
+        </p>
         <button v-if="focus.lastResult?.pending" class="btn mt-3 bg-white/20 text-white" type="button" :disabled="focus.saving" @click="focus.retrySave()">
           <Icon icon="lucide:refresh-cw" width="16" />{{ focus.saving ? '保存中…' : '网络异常，重试保存' }}
         </button>
         <button
           v-else-if="focus.lastResult?.task && !focus.lastResult.task.completed"
-          class="btn mt-3 bg-success text-white"
+          class="btn mt-3 bg-success text-on-success"
           type="button"
           @click="markTaskDone"
         >
@@ -214,12 +274,12 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
 
     <footer class="relative space-y-3 px-6 pb-[calc(var(--safe-bottom)+28px)]">
       <template v-if="focus.status === 'idle'">
-        <button class="btn w-full bg-white py-4 text-base text-[#26357A] shadow-xl" type="button" @click="focus.start()">
+        <button class="btn w-full bg-white py-4 text-base text-deep-ink shadow-xl" type="button" @click="focus.start()">
           <Icon icon="lucide:play" width="20" />开始专注 {{ focus.plannedMinutes }} 分钟
         </button>
       </template>
       <template v-else-if="focus.active">
-        <button class="btn w-full bg-white py-4 text-base text-[#26357A] shadow-xl" type="button" @click="focus.status === 'running' ? focus.pause() : focus.resume()">
+        <button class="btn w-full bg-white py-4 text-base text-deep-ink shadow-xl" type="button" @click="focus.status === 'running' ? focus.pause() : focus.resume()">
           <Icon :icon="focus.status === 'running' ? 'lucide:pause' : 'lucide:play'" width="20" />{{ focus.status === 'running' ? '暂停' : '继续' }}
         </button>
         <div class="grid grid-cols-2 gap-3">
@@ -230,7 +290,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
       <template v-else>
         <div class="grid grid-cols-2 gap-3">
           <button class="btn bg-white/10 text-white" type="button" @click="again"><Icon icon="lucide:rotate-ccw" width="16" />再来一轮</button>
-          <button class="btn bg-white text-[#26357A]" type="button" @click="focus.abandon(); leave()">完成</button>
+          <button class="btn bg-white text-deep-ink" type="button" @click="focus.abandon(); leave()">完成</button>
         </div>
       </template>
     </footer>

@@ -276,3 +276,101 @@ def course_to_dict(course: Timetable, total_weeks: int, week: Optional[int] = No
         "note": course.note or "",
         "in_week": True if week is None or week == 0 else week in weeks,
     }
+
+
+# ---------------------------------------------------------------- 课表分享
+SHARE_DAYS = 7
+SHARE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # 去掉易混淆的 0/O、1/I/L
+
+
+def normalize_share_code(code: str) -> str:
+    return re.sub(r"[\s\-]", "", str(code or "")).upper()
+
+
+def share_snapshot(db: Session, user: User) -> dict:
+    """当前学期课程与节次设置的快照（不含课程 id，导入方会重新建课）。"""
+    courses = user_courses(db, user)
+    total = int(user.total_weeks or 20)
+    return {
+        "semester": effective_semester(db, user),
+        "semester_start": user.semester_start,
+        "total_weeks": total,
+        "period_times": period_times(user),
+        "courses": [
+            {
+                "course_name": c.course_name,
+                "teacher": c.teacher or "",
+                "classroom": c.classroom or "",
+                "day_of_week": c.day_of_week,
+                "start_period": c.start_period or time_to_period(user, c.start_time),
+                "end_period": c.end_period or time_to_period(user, c.end_time, use_end=True),
+                "weeks": course_weeks(c, total),
+                "color": c.color or color_for(c.course_name),
+                "note": c.note or "",
+            }
+            for c in courses
+        ],
+    }
+
+
+def import_shared_courses(db: Session, user: User, snapshot: dict, mode: str = "merge",
+                          use_period_times: bool = False) -> dict:
+    """
+    把分享快照导入到自己的当前学期。
+    merge：只和自己原有的课程比对，时间冲突或完全相同的课跳过并说明原因；
+    replace：先清空本学期课程，再按分享者的课表原样导入（分享者自己允许的冲突也保留）。
+    未设置开学日期时，顺带采用分享者的开学日期与总周数（同班同学通常一致）。
+    """
+    if not user.semester_start and snapshot.get("semester_start"):
+        user.semester_start = snapshot["semester_start"]
+        user.total_weeks = int(snapshot.get("total_weeks") or user.total_weeks or 20)
+    if use_period_times and snapshot.get("period_times"):
+        user.period_times = json.dumps(snapshot["period_times"], ensure_ascii=False)
+    semester = effective_semester(db, user)
+    if not user.semester:
+        user.semester = semester
+    if mode == "replace":
+        db.query(Timetable).filter(Timetable.user_id == user.id, Timetable.semester == semester).delete()
+        db.flush()
+    elif use_period_times:
+        for course in user_courses(db, user):
+            course.start_time, course.end_time = periods_to_times(user, course.start_period or 1, course.end_period or 1)
+
+    existing = list(user_courses(db, user))
+    total = int(user.total_weeks or 20)
+    table_size = len(period_times(user))
+    added, skipped = [], []
+    for item in snapshot.get("courses") or []:
+        name = str(item.get("course_name") or "").strip()[:160]
+        label = f"{name}（周{timeutil.WEEKDAY_CN[int(item.get('day_of_week', 1)) - 1]} {item.get('start_period')}-{item.get('end_period')}节）"
+        weeks = [int(w) for w in item.get("weeks") or [] if 1 <= int(w) <= total]
+        if not name:
+            continue
+        if not weeks:
+            skipped.append({"course_name": name, "label": label, "reason": f"上课周次超出你的学期周数（{total} 周）"})
+            continue
+        if int(item["end_period"]) > table_size:
+            skipped.append({"course_name": name, "label": label, "reason": f"你的节次表只有 {table_size} 节"})
+            continue
+        day, p1, p2 = int(item["day_of_week"]), int(item["start_period"]), int(item["end_period"])
+        if mode != "replace":
+            same = next((c for c in existing if c.course_name == name and c.day_of_week == day
+                         and c.start_period == p1 and c.end_period == p2
+                         and set(weeks) <= set(course_weeks(c, total))), None)
+            if same:
+                skipped.append({"course_name": name, "label": label, "reason": "你的课表里已有这门课"})
+                continue
+            conflicts = find_conflicts(existing, day, p1, p2, weeks, total)
+            if conflicts:
+                first = conflicts[0]
+                skipped.append({"course_name": name, "label": label,
+                                "reason": f"与你的「{first['course_name']}」在{first['overlap_weeks']}时间冲突"})
+                continue
+        course = save_course(db, user, {
+            "course_name": name, "day_of_week": day, "start_period": p1, "end_period": p2, "weeks": weeks,
+            "teacher": item.get("teacher") or "", "classroom": item.get("classroom") or "",
+            "color": item.get("color") or None, "note": item.get("note") or "", "force": True,
+        })
+        added.append({"id": course.id, "course_name": name, "label": label})
+    return {"semester": semester, "added": added, "skipped": skipped,
+            "added_count": len(added), "skipped_count": len(skipped)}

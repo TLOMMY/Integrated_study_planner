@@ -2,12 +2,13 @@
 from fastapi import APIRouter
 
 from app.api.deps import DB, CurrentUser
+from app.core.config import settings
 from app.core.errors import ApiError, ok
 from app.core.security import hash_password, token_payload, verify_password
 from app.models import AiProvider, FocusRecord, ImportLog, StudyPlan, StudyTask, Timetable, User, UserAchievement, XpEvent
-from app.schemas import EmailChangeIn, PasswordConfirmIn, PasswordIn, PhoneChangeIn, StudyPrefsIn, UserUpdateIn
+from app.schemas import EmailChangeIn, PasswordConfirmIn, PasswordIn, PhoneChangeIn, StudyPrefsIn, UserUpdateIn, VerifyEmailIn
 from app.services import prefs
-from app.services.accounts import user_to_dict
+from app.services.accounts import user_to_dict, verify_email_code
 
 router = APIRouter(prefix="/users", tags=["用户"])
 
@@ -59,6 +60,12 @@ def change_email(payload: EmailChangeIn, user: CurrentUser, db: DB):
         raise ApiError(400, "新邮箱与当前邮箱相同")
     if db.query(User.id).filter(User.email == email, User.id != user.id).first():
         raise ApiError(400, "该邮箱已被其他账号使用")
+    # 开启邮箱验证时必须带新邮箱的验证码；未开启时带了也会校验，通过则直接标记已验证
+    if payload.code:
+        verify_email_code(db, email, "bind", payload.code)
+    elif settings.REQUIRE_EMAIL_VERIFY:
+        raise ApiError(400, "请填写新邮箱收到的验证码")
+    user.email_verified = bool(payload.code)
     # 用户名默认就是注册邮箱：跟着换，避免旧邮箱仍能作为用户名登录
     if user.username == user.email and not db.query(User.id).filter(User.username == email).first():
         user.username = email
@@ -66,6 +73,18 @@ def change_email(payload: EmailChangeIn, user: CurrentUser, db: DB):
     db.commit()
     db.refresh(user)
     return ok(user_to_dict(user), "邮箱已更新，下次可用新邮箱登录")
+
+
+@router.post("/me/verify-email", summary="用验证码验证当前邮箱（先 POST /auth/email-code，purpose=bind）")
+def verify_email(payload: VerifyEmailIn, user: CurrentUser, db: DB):
+    _no_demo(user, "验证邮箱")
+    if user.email_verified:
+        return ok(user_to_dict(user), "邮箱已验证")
+    verify_email_code(db, user.email, "bind", payload.code)
+    user.email_verified = True
+    db.commit()
+    db.refresh(user)
+    return ok(user_to_dict(user), "邮箱验证成功")
 
 
 @router.put("/me/phone", summary="绑定 / 解绑手机号（需验证密码；暂不发送短信验证码）")

@@ -368,7 +368,7 @@ const back = () => {
       <div class="space-y-2">
         <div v-for="group in groups" :key="group.name" class="rounded-2xl border border-ink-line/70">
           <button class="flex w-full items-center gap-3 px-3 py-2.5 text-left" type="button" @click="toggleGroup(group)">
-            <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2" :class="groupState(group) === 'none' ? 'border-ink-line' : 'border-primary bg-primary text-white'">
+            <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2" :class="groupState(group) === 'none' ? 'border-ink-line' : 'border-primary bg-primary text-on-primary'">
               <Icon v-if="groupState(group) !== 'none'" :icon="groupState(group) === 'all' ? 'lucide:check' : 'lucide:minus'" width="12" />
             </span>
             <span class="h-3 w-3 shrink-0 rounded-full" :style="{ background: group.color }" />

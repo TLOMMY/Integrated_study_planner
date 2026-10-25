@@ -146,7 +146,7 @@ def test_batch_move_delete_and_search(client, auth, register):
 # ---------------------------------------------------------------- 反馈
 def test_feedback_saved_as_txt_and_admin_only(client, auth, register):
     saved = body(client.post("/feedback", headers=auth, json={"category": "bug", "content": "专注页偶尔白屏\n需要刷新", "page": "/focus-timer"}))
-    path = settings.FEEDBACK_DIR / f"{saved['id']}.txt"
+    path = settings.FEEDBACK_DIR / f"{saved['txt_id']}.txt"
     text = path.read_text(encoding="utf-8")
     assert "功能异常" in text and "专注页偶尔白屏" in text and "/focus-timer" in text
     body(client.get("/feedback", headers=auth), 403)
@@ -160,6 +160,8 @@ def test_feedback_saved_as_txt_and_admin_only(client, auth, register):
     assert any(item["id"] == saved["id"] for item in listing["items"])
     raw = client.get(f"/feedback/{saved['id']}", headers=admin_headers)
     assert raw.status_code == 200 and "专注页偶尔白屏" in raw.text
+    # 仍可用 txt 文件名读取原文
+    assert "专注页偶尔白屏" in client.get(f"/feedback/{saved['txt_id']}", headers=admin_headers).text
     body(client.get("/feedback/..%2F..%2Fmain", headers=admin_headers), 404)
 
 

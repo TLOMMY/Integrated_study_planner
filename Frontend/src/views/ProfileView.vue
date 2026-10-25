@@ -74,7 +74,7 @@ const logout = async () => {
       <div class="mt-2 flex flex-col items-center text-center">
         <button class="relative flex h-24 w-24 items-center justify-center rounded-full bg-surface text-5xl shadow-soft" type="button" aria-label="更换头像" @click="sheet = 'avatar'">
           {{ auth.user?.avatar }}
-          <span class="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-white ring-4 ring-primary-light"><Icon icon="lucide:pencil" width="13" /></span>
+          <span class="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary ring-4 ring-primary-light"><Icon icon="lucide:pencil" width="13" /></span>
         </button>
         <button class="mt-3 flex items-center gap-1 text-xl font-black text-ink" type="button" @click="sheet = 'name'">
           {{ auth.displayName }}<Icon icon="lucide:pencil" width="14" class="text-ink-mute" />

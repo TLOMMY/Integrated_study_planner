@@ -104,6 +104,16 @@ const save = async () => {
 }
 
 const activate = (value) => ai.activate(value).catch((error) => ui.fail(error))
+
+// 思考强度作用于当前使用的配置；不支持思考模式的模型置灰
+const THINKING = [
+  { key: 'off', label: '关闭', hint: '回复最快' },
+  { key: 'high', label: '高', hint: '推荐' },
+  { key: 'max', label: '最高', hint: '最慢、最仔细' },
+]
+const thinkingValue = computed(() => s.value?.resolved?.thinking_setting || 'high')
+const thinkingEnabled = computed(() => s.value?.resolved?.provider === 'llm' && s.value?.resolved?.thinking_supported)
+const setThinking = (key) => ai.setThinking(key).catch((error) => ui.fail(error))
 const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.fail(error))
 </script>
 
@@ -121,6 +131,25 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
       <p class="rounded-2xl bg-primary-light px-4 py-2.5 text-xs font-semibold text-primary">
         当前使用：{{ s.resolved.label }}
       </p>
+
+      <div class="rounded-3xl border border-ink-line/70 p-3.5" :class="!thinkingEnabled && 'opacity-60'">
+        <p class="flex items-center gap-1.5 text-sm font-black text-ink"><Icon icon="lucide:brain" width="16" class="text-primary" />思考强度</p>
+        <p class="mt-0.5 text-[11px] text-ink-mute">{{ thinkingEnabled ? '开启后模型会先思考再回答，追问和排程更靠谱，但会慢一些' : '当前模型不支持思考模式（如 deepseek-v4-pro 才支持），不会传思考参数' }}</p>
+        <div class="mt-2 grid grid-cols-3 gap-2">
+          <button
+            v-for="t in THINKING"
+            :key="t.key"
+            type="button"
+            class="rounded-2xl border-2 px-2 py-2 text-center transition"
+            :class="thinkingValue === t.key ? 'border-primary bg-primary-light/40 text-primary' : 'border-ink-line/70 text-ink-soft'"
+            :disabled="!thinkingEnabled"
+            @click="setThinking(t.key)"
+          >
+            <span class="block text-xs font-black">{{ t.label }}</span>
+            <span class="block text-[10px] text-ink-mute">{{ t.hint }}</span>
+          </button>
+        </div>
+      </div>
 
       <button
         type="button"
@@ -157,7 +186,7 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
         :class="p.active ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
       >
         <button type="button" class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="activate(String(p.id))">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-xp text-white"><Icon icon="lucide:sparkles" width="20" /></span>
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-xp text-on-primary"><Icon icon="lucide:sparkles" width="20" /></span>
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm font-black text-ink">{{ p.name }}</span>
             <span class="block truncate text-[11px] text-ink-mute">{{ p.model }} · {{ p.has_key ? p.key_masked : '无 Key' }}</span>
@@ -170,7 +199,7 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
       </div>
 
       <button class="btn-ghost w-full" type="button" @click="startEdit()"><Icon icon="lucide:plus" width="16" />添加模型</button>
-      <p class="px-1 text-[11px] leading-5 text-ink-mute">API Key 加密保存在服务器，页面只显示脱敏后的末四位。模型给出的每个学习块都会校验是否落在你的空闲时段内，不合格会自动剔除。</p>
+      <p class="px-1 text-[11px] leading-5 text-ink-mute">API Key 加密保存在服务器，页面只显示脱敏后的末四位。AI 生成的任务、课程和修改都会先显示成卡片，导入时逐条检查冲突。</p>
     </div>
 
     <!-- 编辑表单 -->
@@ -197,7 +226,7 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
       <div>
         <span class="label">模型</span>
         <div class="flex gap-2">
-          <input v-model="form.model" class="field flex-1 font-mono text-xs" list="ai-model-options" placeholder="deepseek-chat" autocomplete="off" />
+          <input v-model="form.model" class="field flex-1 font-mono text-xs" list="ai-model-options" placeholder="deepseek-v4-pro" autocomplete="off" />
           <button class="btn-ghost shrink-0 px-3 py-2" type="button" :disabled="busy === 'models'" @click="fetchModels">
             <Icon :icon="busy === 'models' ? 'lucide:loader-circle' : 'lucide:list'" width="16" :class="busy === 'models' && 'animate-spin'" />获取
           </button>

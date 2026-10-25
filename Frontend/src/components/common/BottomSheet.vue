@@ -23,8 +23,8 @@ watch(
     <Transition name="sheet" :duration="260">
       <!-- 手机：底部抽屉；桌面（lg）：居中对话框 -->
       <div v-if="open" class="sheet absolute inset-0 z-[70] flex flex-col justify-end lg:items-center lg:justify-center lg:p-8" role="dialog" aria-modal="true" :aria-label="title">
-        <div class="sheet-mask absolute inset-0 bg-ink/45" @click="emit('close')" />
-        <section class="sheet-panel relative flex max-h-[88%] flex-col rounded-t-[28px] bg-surface pb-[calc(var(--safe-bottom)+12px)] shadow-2xl lg:max-h-[min(86vh,820px)] lg:w-full lg:max-w-[560px] lg:rounded-[28px] lg:pb-4">
+        <div class="sheet-mask absolute inset-0 bg-scrim/45" @click="emit('close')" />
+        <section class="sheet-panel material relative flex max-h-[88%] flex-col rounded-t-[28px] bg-surface pb-[calc(var(--safe-bottom)+12px)] shadow-2xl lg:max-h-[min(86vh,820px)] lg:w-full lg:max-w-[560px] lg:rounded-[28px] lg:pb-4">
           <div class="mx-auto mt-2.5 h-1.5 w-10 rounded-full bg-ink-line lg:hidden" />
           <header v-if="title" class="flex items-start justify-between gap-3 px-5 pb-2 pt-3">
             <div class="min-w-0">

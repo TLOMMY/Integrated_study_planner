@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { planApi, studyApi } from '@/api'
+import { groupApi, growthApi } from '@/api/growth'
 import { useUiStore } from './ui'
 import { useTasksStore } from './tasks'
 
@@ -91,6 +92,11 @@ export const useStatsStore = defineStore('stats', {
     data: null,
     leaderboard: null,
     loading: false,
+    subjects: null,
+    groups: [],
+    groupsLoaded: false,
+    groupBoard: null,
+    freezes: null,
   }),
 
   actions: {
@@ -106,6 +112,24 @@ export const useStatsStore = defineStore('stats', {
     async loadLeaderboard() {
       this.leaderboard = await studyApi.leaderboard()
       return this.leaderboard
+    },
+    async loadSubjects(days = 30) {
+      this.subjects = await growthApi.subjects(days)
+      return this.subjects
+    },
+    async loadGroups() {
+      this.groups = await groupApi.list()
+      this.groupsLoaded = true
+      return this.groups
+    },
+    async loadGroupBoard(id) {
+      const detail = await groupApi.detail(id)
+      this.groupBoard = { group_id: id, leaderboard: detail.leaderboard }
+      return this.groupBoard
+    },
+    async loadFreezes() {
+      this.freezes = await growthApi.freezes()
+      return this.freezes
     },
   },
 })

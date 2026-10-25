@@ -12,14 +12,15 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.ai import llm
 from app.ai.llm import ModelConfig
 from app.core import crypto
 from app.core.config import settings
 from app.models import AiProvider, User
 
 PRESETS: List[dict] = [
-    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat",
-     "needs_key": True, "hint": "platform.deepseek.com 创建 Key"},
+    {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-v4-pro",
+     "needs_key": True, "hint": "platform.deepseek.com 创建 Key；deepseek-v4-pro 支持思考模式与工具调用"},
     {"key": "kimi", "name": "Kimi 月之暗面", "base_url": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k",
      "needs_key": True, "hint": "platform.moonshot.cn 创建 Key"},
     {"key": "qwen", "name": "通义千问", "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -37,6 +38,16 @@ PRESETS: List[dict] = [
 ]
 
 ENV_NAME = "DeepSeek（服务器配置）"
+
+# DeepSeek 旧模型名现在都是不思考的 deepseek-flash 别名；服务器配置沿用旧默认值时升级到 v4-pro
+LEGACY_ENV_MODELS = {"deepseek-chat", "deepseek-reasoner"}
+DEFAULT_ENV_MODEL = "deepseek-v4-pro"
+
+THINKING_LABELS = {"off": "关闭", "high": "高", "max": "最高"}
+
+
+def _thinking(value) -> str:
+    return value if value in llm.THINKING_LEVELS else "high"
 
 
 def mask_key(key: str) -> str:
@@ -56,20 +67,29 @@ def provider_to_dict(provider: AiProvider, active: str) -> dict:
         "key_masked": mask_key(key),
         "key_unreadable": bool(provider.api_key_enc) and not key,
         "active": active == str(provider.id),
+        "thinking": _thinking(provider.thinking),
         "created_at": provider.created_at.isoformat() if provider.created_at else None,
     }
 
 
-def env_config() -> Optional[ModelConfig]:
+def env_model() -> str:
+    model = settings.DEEPSEEK_MODEL or DEFAULT_ENV_MODEL
+    return DEFAULT_ENV_MODEL if model in LEGACY_ENV_MODELS else model
+
+
+def env_config(thinking: str = "high") -> Optional[ModelConfig]:
     if not settings.DEEPSEEK_API_KEY:
         return None
+    # 思考模式 + 多步工具调用耗时更长，超时至少 120 秒
     return ModelConfig(base_url=settings.DEEPSEEK_API_URL, api_key=settings.DEEPSEEK_API_KEY,
-                       model=settings.DEEPSEEK_MODEL, name=ENV_NAME, source="env", timeout=settings.DEEPSEEK_TIMEOUT)
+                       model=env_model(), name=ENV_NAME, source="env",
+                       timeout=max(settings.DEEPSEEK_TIMEOUT, 120), thinking=_thinking(thinking))
 
 
 def to_config(provider: AiProvider) -> ModelConfig:
     return ModelConfig(base_url=provider.base_url, api_key=crypto.decrypt(provider.api_key_enc),
-                       model=provider.model, name=provider.name, source="user", timeout=settings.AI_TIMEOUT)
+                       model=provider.model, name=provider.name, source="user",
+                       timeout=max(settings.AI_TIMEOUT, 120), thinking=_thinking(provider.thinking))
 
 
 def get_owned(db: Session, user: User, provider_id: int) -> Optional[AiProvider]:
@@ -85,12 +105,16 @@ def resolve(db: Session, user: User) -> Optional[ModelConfig]:
         provider = get_owned(db, user, int(mode))
         if provider is not None:
             return to_config(provider)
-    return env_config()
+    return env_config(getattr(user, "ai_thinking", None) or "high")
 
 
 def active_info(db: Session, user: User) -> dict:
     config = resolve(db, user)
     if config is None:
         return {"provider": "rule", "name": "本地规则引擎", "model": None, "label": "本地规则引擎", "source": "rule"}
+    thinking = config.thinking if llm.supports_thinking(config) else "off"
     return {"provider": "llm", "name": config.name, "model": config.model,
-            "label": f"{config.name} · {config.model}", "source": config.source}
+            "label": f"{config.name} · {config.model}", "source": config.source,
+            # thinking_supported=False 时界面上的"思考强度"置灰（该模型不传思考参数）
+            "thinking": thinking, "thinking_setting": config.thinking,
+            "thinking_supported": llm.supports_thinking(ModelConfig(config.base_url, "", config.model, thinking="high"))}

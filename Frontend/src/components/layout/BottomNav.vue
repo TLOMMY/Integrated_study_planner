@@ -20,7 +20,7 @@ const streakAtRisk = computed(() => game.streak?.at_risk)
 </script>
 
 <template>
-  <nav class="relative z-40 shrink-0 border-t border-ink-line/70 bg-surface/95 pb-[var(--safe-bottom)] backdrop-blur" aria-label="主导航">
+  <nav class="glass-bar relative z-40 shrink-0 border-t border-ink-line/70 bg-surface/95 pb-[var(--safe-bottom)] backdrop-blur" aria-label="主导航">
     <div class="grid h-16 grid-cols-5">
       <RouterLink
         v-for="tab in tabs"
@@ -32,7 +32,7 @@ const streakAtRisk = computed(() => game.streak?.at_risk)
       >
         <span
           v-if="tab.primary"
-          class="-mt-7 flex h-14 w-14 items-center justify-center rounded-[20px] bg-gradient-to-br from-primary to-xp text-white shadow-lift ring-4 ring-surface"
+          class="-mt-7 flex h-14 w-14 items-center justify-center rounded-[20px] bg-gradient-to-br from-primary to-xp text-on-primary shadow-lift ring-4 ring-surface"
         >
           <Icon :icon="tab.icon" width="26" />
         </span>

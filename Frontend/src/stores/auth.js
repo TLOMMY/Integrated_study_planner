@@ -69,6 +69,10 @@ export const useAuthStore = defineStore('auth', {
     async changePhone(payload) {
       this.user = await userApi.changePhone(payload)
     },
+    /** 用验证码验证当前邮箱（先 authApi.sendEmailCode(email, 'bind')）。 */
+    async verifyEmail(code) {
+      this.user = await userApi.verifyEmail(code)
+    },
 
     /** 在凭证到期前自动续期，长时间挂着页面也不会突然掉线。 */
     scheduleRefresh() {

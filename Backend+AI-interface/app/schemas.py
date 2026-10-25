@@ -20,6 +20,8 @@ class RegisterIn(_Base):
     password: str = Field(min_length=6, max_length=64)
     full_name: Optional[str] = Field(default=None, max_length=40)
     username: Optional[str] = Field(default=None, min_length=3, max_length=50)
+    # 邮箱验证码（选填；服务器开启 REQUIRE_EMAIL_VERIFY 时必填）
+    code: Optional[str] = Field(default=None, max_length=10)
 
 
 class LoginIn(_Base):
@@ -43,6 +45,8 @@ class UserUpdateIn(_Base):
     full_name: Optional[str] = Field(default=None, min_length=1, max_length=40)
     avatar: Optional[str] = Field(default=None, min_length=1, max_length=8)
     daily_goal_minutes: Optional[int] = Field(default=None, ge=10, le=600)
+    # 界面主题名（default / dark / …），由前端主题注册表定义
+    theme: Optional[str] = Field(default=None, pattern=r"^[a-z0-9-]{2,30}$")
 
 
 class PasswordIn(_Base):
@@ -53,6 +57,8 @@ class PasswordIn(_Base):
 class EmailChangeIn(_Base):
     email: EmailStr
     password: str = Field(min_length=1, max_length=64)
+    # 新邮箱的验证码（开启邮箱验证时必填；未开启时填了也会校验并标记为已验证）
+    code: Optional[str] = Field(default=None, max_length=10)
 
 
 PHONE_PATTERN = r"^1[3-9]\d{9}$"
@@ -110,10 +116,95 @@ class FeedbackIn(_Base):
     contact: Optional[str] = Field(default=None, max_length=100)
     page: Optional[str] = Field(default=None, max_length=200)
     client: Optional[str] = Field(default=None, max_length=300)
+    # 先通过 POST /feedback/images 上传得到的截图名（最多 3 张）
+    images: List[str] = Field(default_factory=list, max_length=3)
 
 
 # ---------------------------------------------------------------- 任务
-class TaskIn(_Base):
+TASK_TAG_MAX = 5
+TASK_TAG_LEN = 12
+TASK_LIST_LEN = 20
+TASK_CHECKLIST_MAX = 30
+TASK_LINKS_MAX = 10
+REMIND_PATTERN = r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?$"
+
+
+class ChecklistItemIn(_Base):
+    """子任务：id 由前端生成（不传则服务器补），标题 1-100 字。"""
+
+    id: Optional[str] = Field(default=None, max_length=40, pattern=r"^[A-Za-z0-9_-]{1,40}$")
+    title: str = Field(min_length=1, max_length=100)
+    done: bool = False
+
+
+class TaskLinkIn(_Base):
+    """学习资源链接：只允许 http / https。source 如 bilibili / web / ai，不传时服务器按域名判断。"""
+
+    title: Optional[str] = Field(default=None, max_length=100)
+    url: str = Field(min_length=8, max_length=500)
+    source: Optional[str] = Field(default=None, max_length=20, pattern=r"^[a-z0-9_-]{1,20}$")
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, value):
+        from urllib.parse import urlsplit
+
+        parts = urlsplit(value)
+        if parts.scheme.lower() not in ("http", "https") or not parts.netloc or re.search(r"\s", value):
+            raise ValueError("链接只支持 http:// 或 https:// 开头的网址")
+        return value
+
+
+def _clean_tags(value):
+    if value is None:
+        return value
+    tags = []
+    for raw in value:
+        tag = str(raw or "").strip().lstrip("#").strip()
+        if not tag:
+            continue
+        if len(tag) > TASK_TAG_LEN:
+            raise ValueError(f"标签最多 {TASK_TAG_LEN} 个字：{tag[:TASK_TAG_LEN]}…")
+        if tag not in tags:
+            tags.append(tag)
+    if len(tags) > TASK_TAG_MAX:
+        raise ValueError(f"每个任务最多 {TASK_TAG_MAX} 个标签")
+    return tags
+
+
+def _clean_remind(value):
+    if value in (None, ""):
+        return None
+    from datetime import datetime
+
+    try:
+        datetime.fromisoformat(value.replace(" ", "T"))
+    except ValueError:
+        raise ValueError("提醒时间格式应为 YYYY-MM-DDTHH:MM")
+    return value.replace(" ", "T")[:16]
+
+
+class _TaskExtras(_Base):
+    """v4 任务扩展字段：标签、清单分组、子任务、学习资源链接、提醒时间。"""
+
+    tags: Optional[List[str]] = Field(default=None, max_length=20)
+    list_name: Optional[str] = Field(default=None, max_length=TASK_LIST_LEN)
+    checklist: Optional[List[ChecklistItemIn]] = Field(default=None, max_length=TASK_CHECKLIST_MAX)
+    links: Optional[List[TaskLinkIn]] = Field(default=None, max_length=TASK_LINKS_MAX)
+    remind_at: Optional[str] = Field(default=None, pattern=REMIND_PATTERN)
+
+    @field_validator("tags")
+    @classmethod
+    def _tags(cls, value):
+        return _clean_tags(value)
+
+    @field_validator("remind_at")
+    @classmethod
+    def _remind(cls, value):
+        return _clean_remind(value)
+
+
+class TaskIn(_TaskExtras):
     title: str = Field(min_length=1, max_length=200)
     subject: Optional[str] = Field(default=None, max_length=80)
     note: Optional[str] = Field(default=None, max_length=1000)
@@ -126,7 +217,7 @@ class TaskIn(_Base):
     source: Literal["manual", "quick"] = "manual"
 
 
-class TaskUpdateIn(_Base):
+class TaskUpdateIn(_TaskExtras):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     subject: Optional[str] = Field(default=None, max_length=80)
     note: Optional[str] = Field(default=None, max_length=1000)
@@ -136,6 +227,28 @@ class TaskUpdateIn(_Base):
     priority: Optional[int] = Field(default=None, ge=0, le=3)
     repeat_rule: Optional[Literal["none", "daily", "weekdays", "weekly"]] = None
     plan_id: Optional[int] = None
+
+
+class TaskChecklistIn(_Base):
+    """整体替换某个任务的子任务（勾选、增删、排序都走这里）。"""
+
+    checklist: List[ChecklistItemIn] = Field(default_factory=list, max_length=TASK_CHECKLIST_MAX)
+
+
+class TaskListRenameIn(_Base):
+    """重命名清单或标签；新名字已存在时合并。"""
+
+    kind: Literal["list", "tag"] = "list"
+    old_name: str = Field(min_length=1, max_length=TASK_LIST_LEN)
+    new_name: str = Field(min_length=1, max_length=TASK_LIST_LEN)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if self.kind == "tag":
+            self.new_name = self.new_name.lstrip("#").strip()
+            if not self.new_name or len(self.new_name) > TASK_TAG_LEN:
+                raise ValueError(f"标签需为 1-{TASK_TAG_LEN} 个字")
+        return self
 
 
 # ---------------------------------------------------------------- 课表
@@ -197,6 +310,8 @@ class FocusIn(_Base):
     completed: bool = True
     started_at: Optional[str] = None
     subject: Optional[str] = Field(default=None, max_length=80)
+    # 专注会话 id（跨设备同步用）：同一会话被两台设备先后提交时只记一次
+    session_id: Optional[str] = Field(default=None, max_length=40)
 
     @field_validator("started_at")
     @classmethod
@@ -324,11 +439,16 @@ class AiCommitIn(_Base):
         return self
 
 
+THINKING = Literal["off", "high", "max"]
+
+
 class AiProviderIn(_Base):
     name: str = Field(min_length=1, max_length=40)
     base_url: str = Field(min_length=8, max_length=300)
     model: str = Field(min_length=1, max_length=120)
     api_key: Optional[str] = Field(default=None, max_length=300)
+    # 思考强度：只对支持思考模式的模型（如 deepseek-v4-pro）生效
+    thinking: THINKING = "high"
 
 
 class AiProviderUpdateIn(_Base):
@@ -337,6 +457,7 @@ class AiProviderUpdateIn(_Base):
     model: Optional[str] = Field(default=None, min_length=1, max_length=120)
     # 不传或传 null：保留原 Key；传空串：清除 Key
     api_key: Optional[str] = Field(default=None, max_length=300)
+    thinking: Optional[THINKING] = None
 
 
 class AiProbeIn(_Base):
@@ -349,4 +470,180 @@ class AiProbeIn(_Base):
 
 
 class AiSettingsIn(_Base):
-    active: str = Field(pattern=r"^(auto|rule|\d+)$")
+    """切换模型和/或修改思考强度（作用于当前使用的配置；auto 时存到账号上）。"""
+
+    active: Optional[str] = Field(default=None, pattern=r"^(auto|rule|\d+)$")
+    thinking: Optional[THINKING] = None
+
+    @model_validator(mode="after")
+    def _something(self):
+        if self.active is None and self.thinking is None:
+            raise ValueError("请选择要使用的模型或思考强度")
+        return self
+
+
+# ---- B 后台与账号：邮箱验证码、找回密码、管理后台、前端错误上报
+CODE_PATTERN = r"^\d{6}$"
+
+
+class EmailCodeIn(_Base):
+    email: EmailStr
+    purpose: Literal["register", "reset", "bind"] = "register"
+
+
+class ResetPasswordIn(_Base):
+    email: EmailStr
+    code: str = Field(pattern=CODE_PATTERN)
+    new_password: str = Field(min_length=6, max_length=64)
+
+
+class VerifyEmailIn(_Base):
+    code: str = Field(pattern=CODE_PATTERN)
+
+
+FEEDBACK_STATUS = Literal["open", "processing", "resolved", "closed"]
+
+
+class FeedbackStatusIn(_Base):
+    status: FEEDBACK_STATUS
+
+
+class FeedbackReplyIn(_Base):
+    reply: str = Field(min_length=1, max_length=2000)
+    # 回复后顺带修改状态（不传则 open 自动变为 processing）
+    status: Optional[FEEDBACK_STATUS] = None
+    # 同时发邮件告诉用户
+    send_email: bool = False
+
+
+class AdminUserUpdateIn(_Base):
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+
+
+class AdminSettingsIn(_Base):
+    """不传的字段保持不变；传空串表示清空（不再推送）。"""
+
+    feedback_webhook: Optional[str] = Field(default=None, max_length=500)
+    feedback_webhook_secret: Optional[str] = Field(default=None, max_length=200)
+    feedback_notify_emails: Optional[str] = Field(default=None, max_length=500)
+    public_url: Optional[str] = Field(default=None, max_length=200)
+
+    @field_validator("feedback_webhook", "public_url")
+    @classmethod
+    def _url(cls, value):
+        if value and not re.match(r"^https?://", value, re.I):
+            raise ValueError("地址必须以 http:// 或 https:// 开头")
+        return value
+
+    @field_validator("feedback_notify_emails")
+    @classmethod
+    def _emails(cls, value):
+        if not value:
+            return value
+        items = [e.strip() for e in re.split(r"[,，;；\s]+", value) if e.strip()]
+        for item in items:
+            if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", item):
+                raise ValueError(f"通知邮箱格式不正确：{item}")
+        return ",".join(items)
+
+
+class ClientErrorIn(_Base):
+    message: str = Field(min_length=1, max_length=2000)
+    stack: Optional[str] = Field(default=None, max_length=8000)
+    page: Optional[str] = Field(default=None, max_length=500)
+    info: Optional[str] = Field(default=None, max_length=200)
+    version: Optional[str] = Field(default=None, max_length=40)
+    client: Optional[str] = Field(default=None, max_length=500)
+
+
+# ---- A AI 智能体：服务器保存的对话、流式对话、提案（新任务 / 新课程 / 修改）确认导入
+class ConversationIn(_Base):
+    title: Optional[str] = Field(default=None, max_length=100)
+
+
+class ConversationUpdateIn(_Base):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    archived: Optional[bool] = None
+
+
+class AgentChatIn(_Base):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class ProposalApplyIn(_Base):
+    """
+    提交用户在卡片上编辑、勾选后的提案。items 逐条校验、逐条应用，单条失败不影响其他条，
+    所以这里不做严格的字段校验（在 agent.apply_proposal 里逐条给出中文原因）。
+    """
+
+    kind: Literal["tasks", "courses", "changes"]
+    items: List[dict] = Field(min_length=1, max_length=200)
+    # 新任务归入的学习计划：传 plan_id 时追加到该计划（重试失败条目时用），否则新建
+    title: Optional[str] = Field(default=None, max_length=200)
+    goal: Optional[str] = Field(default=None, max_length=500)
+    plan_id: Optional[int] = None
+    # 提案所在的消息与提案 id：导入结果会写回消息，刷新后仍能看到每条的成功 / 失败
+    message_id: Optional[int] = None
+    proposal_id: Optional[str] = Field(default=None, max_length=40)
+
+
+class LegacyTurn(_Base):
+    role: Literal["user", "assistant"]
+    content: str = Field(default="", max_length=4000)
+
+
+class ConversationImportIn(_Base):
+    """把旧版保存在浏览器本地的对话迁移成一条服务器会话。"""
+
+    title: str = Field(default="之前的对话", min_length=1, max_length=100)
+    messages: List[LegacyTurn] = Field(min_length=1, max_length=80)
+
+
+# ---- D 课表分享、考试倒计时、学习小组、专注跨设备同步
+class ExamIn(_Base):
+    title: str = Field(min_length=1, max_length=100)
+    subject: Optional[str] = Field(default=None, max_length=80)
+    exam_date: str = Field(pattern=DATE_PATTERN)
+    start_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
+    location: Optional[str] = Field(default=None, max_length=100)
+    note: Optional[str] = Field(default=None, max_length=500)
+
+    @field_validator("start_time", "subject", "location", "note", mode="before")
+    @classmethod
+    def _blank_to_none(cls, value):
+        return None if isinstance(value, str) and not value.strip() else value
+
+
+class ExamUpdateIn(ExamIn):
+    title: Optional[str] = Field(default=None, min_length=1, max_length=100)
+    exam_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
+
+
+class ShareImportIn(_Base):
+    # merge：与已有课程合并（冲突的跳过）；replace：先清空本学期课程再导入
+    mode: Literal["merge", "replace"] = "merge"
+    # 同时采用分享者的节次时间（两边作息不同时有用）
+    use_period_times: bool = False
+
+
+class GroupIn(_Base):
+    name: str = Field(min_length=1, max_length=40)
+
+
+class GroupJoinIn(_Base):
+    invite_code: str = Field(min_length=4, max_length=16)
+
+
+class FocusStateIn(_Base):
+    """进行中的专注快照。updated_at 是客户端毫秒时间戳，服务器只接受比已存更新的快照。"""
+
+    status: Literal["idle", "running", "paused", "finished"]
+    session_id: Optional[str] = Field(default=None, max_length=40)
+    task: Optional[dict] = None
+    planned_minutes: int = Field(default=25, ge=1, le=300)
+    accumulated_ms: int = Field(default=0, ge=0, le=300 * 60000 + 60000)
+    segment_start: Optional[int] = Field(default=None, ge=0)
+    started_at: Optional[str] = Field(default=None, max_length=40)
+    updated_at: int = Field(ge=0)
+    device: Optional[str] = Field(default=None, max_length=60)

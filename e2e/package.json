@@ -1,0 +1,13 @@
+{
+  "name": "study-planner-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "学业管家端到端测试：临时库启动后端 + 前端开发服务器，用本机 Edge 跑核心流程（电脑 / 手机两种尺寸）",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.64.1"
+  }
+}

@@ -8,12 +8,15 @@ from pathlib import Path
 
 import pytest
 
-FRONTEND_API = Path(__file__).resolve().parents[2] / "Frontend" / "src" / "api" / "index.js"
+FRONTEND_API_DIR = Path(__file__).resolve().parents[2] / "Frontend" / "src" / "api"
+# index.js 以及各模块自己的接口文件（admin.js、agent.js…）；request.js / server.js 不含业务接口
+FRONTEND_API = FRONTEND_API_DIR / "index.js"
 CALL = re.compile(r"http\.(get|post|put|delete)\(\s*(?:'([^']+)'|`([^`]+)`)")
 
 
 def _frontend_calls():
-    source = FRONTEND_API.read_text(encoding="utf-8")
+    source = "\n".join(p.read_text(encoding="utf-8") for p in sorted(FRONTEND_API_DIR.glob("*.js"))
+                       if p.name not in {"request.js", "server.js"})
     calls = set()
     for method, plain, template in CALL.findall(source):
         path = plain or re.sub(r"\$\{[^}]+\}", "{}", template)
@@ -49,5 +52,5 @@ def test_all_business_routes_return_envelope(client, auth):
         payload = client.get(path, headers=auth).json()
         assert set(payload) == {"code", "message", "data"}, path
         # 管理员接口对普通账号返回 403，同样是标准信封
-        expected = 403 if path in ADMIN_ONLY else 200
+        expected = 403 if path in ADMIN_ONLY or path.startswith("/admin/") else 200
         assert payload["code"] == expected, (path, payload)

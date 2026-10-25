@@ -5,11 +5,11 @@ import { useUiStore } from '@/stores/ui'
 const ui = useUiStore()
 
 const STYLE = {
-  success: { icon: 'lucide:circle-check', cls: 'bg-ink text-white', iconCls: 'text-success' },
-  error: { icon: 'lucide:circle-x', cls: 'bg-danger text-white', iconCls: 'text-white' },
-  warning: { icon: 'lucide:triangle-alert', cls: 'bg-ink text-white', iconCls: 'text-flame' },
-  info: { icon: 'lucide:info', cls: 'bg-ink text-white', iconCls: 'text-primary-soft' },
-  xp: { icon: 'lucide:sparkles', cls: 'bg-xp text-white', iconCls: 'text-white' },
+  success: { icon: 'lucide:circle-check', cls: 'bg-inverse text-inverse-ink', iconCls: 'text-success' },
+  error: { icon: 'lucide:circle-x', cls: 'bg-danger text-on-danger', iconCls: 'text-on-danger' },
+  warning: { icon: 'lucide:triangle-alert', cls: 'bg-inverse text-inverse-ink', iconCls: 'text-flame' },
+  info: { icon: 'lucide:info', cls: 'bg-inverse text-inverse-ink', iconCls: 'text-inverse-accent' },
+  xp: { icon: 'lucide:sparkles', cls: 'bg-xp text-on-xp', iconCls: 'text-on-xp' },
 }
 </script>
 

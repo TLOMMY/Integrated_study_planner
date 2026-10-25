@@ -12,6 +12,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="description" content="课表、任务、番茄钟与成长激励一体化的大学生学习规划助手" />
     <title>学业管家 · 智能学习规划</title>
+    <script>
+      // 在 JS 包加载前先把深浅色和底色设对，避免深色主题打开时闪一下白屏（完整配色由 useTheme 写入）
+      try {
+        var boot = JSON.parse(localStorage.getItem('app-theme-boot') || 'null')
+        if (boot) {
+          document.documentElement.style.colorScheme = boot.dark ? 'dark' : 'light'
+          if (boot.bg) document.documentElement.style.background = boot.bg
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

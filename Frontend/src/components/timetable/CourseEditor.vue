@@ -124,7 +124,7 @@ const submit = async () => {
             :key="d"
             type="button"
             class="rounded-xl py-2 text-xs font-bold transition"
-            :class="form.day_of_week === i + 1 ? 'bg-primary text-white' : 'bg-background text-ink-soft'"
+            :class="form.day_of_week === i + 1 ? 'bg-primary text-on-primary' : 'bg-background text-ink-soft'"
             @click="form.day_of_week = i + 1"
           >
             {{ d }}
@@ -171,7 +171,7 @@ const submit = async () => {
             :key="n"
             type="button"
             class="num rounded-lg py-1.5 text-xs font-bold transition"
-            :class="form.custom.has(n) ? 'bg-primary text-white' : 'bg-background text-ink-mute'"
+            :class="form.custom.has(n) ? 'bg-primary text-on-primary' : 'bg-background text-ink-mute'"
             @click="toggleWeek(n)"
           >
             {{ n }}

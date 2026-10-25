@@ -67,6 +67,14 @@ class StudyTask(Base):
 
     # manual / ai / repeat / quick
     source = Column(String(20), default="manual")
+
+    # v4：标签（JSON 字符串数组）、清单分组名、子任务（JSON：[{id,title,done}]）、
+    #     学习资源链接（JSON：[{title,url,source}]，如 AI 推荐的 B 站课程）、提醒时间
+    tags = Column(Text, nullable=True)
+    list_name = Column(String(40), nullable=True, index=True)
+    checklist = Column(Text, nullable=True)
+    links = Column(Text, nullable=True)
+    remind_at = Column(DateTime, nullable=True, index=True)
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)
 

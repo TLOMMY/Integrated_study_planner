@@ -62,9 +62,9 @@ const blockStyle = ({ course, lane, width }) => ({
 
     <div class="grid flex-1" :style="{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }">
       <div v-for="day in days" :key="day.day_of_week" class="min-w-0">
-        <div class="flex h-11 flex-col items-center justify-center rounded-xl" :class="day.is_today && 'bg-primary text-white'">
+        <div class="flex h-11 flex-col items-center justify-center rounded-xl" :class="day.is_today && 'bg-primary text-on-primary'">
           <span class="text-[11px] font-black lg:text-sm">{{ day.label }}</span>
-          <span class="num text-[9px] lg:text-[11px]" :class="day.is_today ? 'text-white/80' : 'text-ink-mute'">{{ day.short }}</span>
+          <span class="num text-[9px] lg:text-[11px]" :class="day.is_today ? 'text-on-primary/80' : 'text-ink-mute'">{{ day.short }}</span>
         </div>
         <div class="relative" :style="{ height: `${periods.length * ROW}px` }">
           <button

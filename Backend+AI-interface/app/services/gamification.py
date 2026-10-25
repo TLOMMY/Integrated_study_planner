@@ -15,7 +15,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core import timeutil
-from app.models import FocusRecord, ImportLog, StudyPlan, StudyTask, User, UserAchievement, XpEvent
+from app.models import FocusRecord, ImportLog, StreakFreeze, StudyPlan, StudyTask, User, UserAchievement, XpEvent
 
 # ---------------------------------------------------------------- XP 规则
 XP_TASK = 10
@@ -141,19 +141,120 @@ def active_days(db: Session, user_id: int) -> Set[date]:
     return days
 
 
-def streak_info(db: Session, user_id: int, ref: Optional[date] = None) -> dict:
+# ---------------------------------------------------------------- 断签保护卡
+FREEZE_EVERY = 7
+FREEZE_MAX = 3
+
+
+@dataclass
+class FreezePlan:
+    """断签保护卡的推演结果：已落库的流水 + 本次推演新增的（尚未落库）。"""
+
+    held: int
+    used: Set[date]
+    new_used: List[date]
+    new_earned: List[date]
+    new_capped: List[date]
+
+
+def _freeze_rows(db: Session, user_id: int) -> Dict[date, str]:
+    rows = db.query(StreakFreeze.day, StreakFreeze.kind).filter(StreakFreeze.user_id == user_id).all()
+    result = {}
+    for day, kind in rows:
+        parsed = timeutil.parse_date(day)
+        if parsed:
+            result[parsed] = kind or "used"
+    return result
+
+
+def plan_freezes(db: Session, user_id: int, ref: Optional[date] = None, days: Optional[Set[date]] = None) -> FreezePlan:
     """
-    连续打卡：今天或昨天有学习即保持连续。
-    at_risk=True 表示"昨天之前一直连着，今天还没学"，前端会提醒用户别断火。
+    推演断签保护卡（纯计算，不写库）：
+    1. 连续学习（只算真实学习日，保护日不算）每满 7 的倍数天获得 1 张，最多持有 3 张；
+    2. 今天之前有缺勤缺口、且持有的卡够补满整个缺口时，自动逐天消耗补上；
+       不够补满就不消耗（补了也保不住连续记录，卡留着下次用）。
+    结果只依赖学习记录与已落库的流水，同一输入多次推演结果相同。
     """
     ref = ref or timeutil.today()
-    days = active_days(db, user_id)
-    active_today = ref in days
+    active = days if days is not None else active_days(db, user_id)
+    rows = _freeze_rows(db, user_id)
+    user = db.get(User, user_id)
+    held = int(getattr(user, "streak_freezes", 0) or 0)
+    used = {d for d, kind in rows.items() if kind == "used"}
+    processed = {d for d, kind in rows.items() if kind in ("earned", "capped")}
+    plan = FreezePlan(held=held, used=set(used), new_used=[], new_earned=[], new_capped=[])
+
+    def covered(day: date) -> bool:
+        return day in active or day in plan.used
+
+    def earn_run(end: date) -> None:
+        """以 end 结尾的连续段里，补发尚未处理的"满 7 天"奖励。"""
+        if not covered(end):
+            return
+        start = end
+        while covered(start - timedelta(days=1)):
+            start -= timedelta(days=1)
+        count, cursor = 0, start
+        while cursor <= end:
+            if cursor in active:
+                count += 1
+                if count % FREEZE_EVERY == 0 and cursor not in processed:
+                    processed.add(cursor)
+                    if plan.held < FREEZE_MAX:
+                        plan.held += 1
+                        plan.new_earned.append(cursor)
+                    else:
+                        plan.new_capped.append(cursor)
+            cursor += timedelta(days=1)
+
+    history = [d for d in (active | plan.used) if d < ref]
+    if history:
+        last = max(history)
+        gap = (ref - last).days - 1
+        if gap <= FREEZE_MAX:
+            earn_run(last)
+        if 0 < gap <= plan.held:
+            for offset in range(1, gap + 1):
+                day = last + timedelta(days=offset)
+                plan.used.add(day)
+                plan.new_used.append(day)
+                plan.held -= 1
+    earn_run(ref)
+    return plan
+
+
+def settle_freezes(db: Session, user: User, ref: Optional[date] = None) -> dict:
+    """把推演出的保护卡变化落库（只在会提交事务的写操作里调用，如完成任务、记录专注）。"""
+    plan = plan_freezes(db, user.id, ref)
+    if not (plan.new_used or plan.new_earned or plan.new_capped):
+        return {"used": [], "earned": []}
+    for kind, items in (("used", plan.new_used), ("earned", plan.new_earned), ("capped", plan.new_capped)):
+        for day in items:
+            db.add(StreakFreeze(user_id=user.id, day=day.isoformat(), kind=kind))
+    user.streak_freezes = plan.held
+    db.flush()
+    return {"used": [d.isoformat() for d in plan.new_used], "earned": [d.isoformat() for d in plan.new_earned]}
+
+
+def streak_info(db: Session, user_id: int, ref: Optional[date] = None) -> dict:
+    """
+    连续打卡：今天或昨天有学习即保持连续；被断签保护卡补上的日子视为已学习。
+    at_risk=True 表示"昨天之前一直连着，今天还没学"，前端会提醒用户别断火。
+    本函数只读：保护卡的消耗与获得在这里按规则推演出来，由 settle_freezes 在写操作中落库。
+    """
+    ref = ref or timeutil.today()
+    studied = active_days(db, user_id)
+    plan = plan_freezes(db, user_id, ref, studied)
+    days = studied | plan.used
+    active_today = ref in studied
 
     cursor = ref if active_today else ref - timedelta(days=1)
     current = 0
+    protected = []
     while cursor in days:
         current += 1
+        if cursor not in studied:
+            protected.append(cursor)
         cursor -= timedelta(days=1)
 
     longest, run, previous = 0, 0, None
@@ -167,17 +268,26 @@ def streak_info(db: Session, user_id: int, ref: Optional[date] = None) -> dict:
         {
             "date": (week_start + timedelta(days=i)).isoformat(),
             "label": timeutil.WEEKDAY_CN[i],
-            "active": (week_start + timedelta(days=i)) in days,
+            "active": (week_start + timedelta(days=i)) in studied,
+            "frozen": (week_start + timedelta(days=i)) in plan.used and (week_start + timedelta(days=i)) not in studied,
             "is_today": week_start + timedelta(days=i) == ref,
         }
         for i in range(7)
     ]
+    # 本轮连续里最近一次被保护卡补上的日子（前端据此提示"已用保护卡保住连续记录"）
+    last_protected = max(protected).isoformat() if protected else None
+    studied_in_run = current - len(protected)
     return {
         "current": current,
         "longest": max(longest, current),
         "active_today": active_today,
         "at_risk": current > 0 and not active_today,
         "week": week,
+        "freezes": plan.held,
+        "freeze_max": FREEZE_MAX,
+        "protected_days": sorted(d.isoformat() for d in protected),
+        "last_protected": last_protected,
+        "next_freeze_in": FREEZE_EVERY - studied_in_run % FREEZE_EVERY,
     }
 
 
@@ -282,6 +392,7 @@ class RewardTracker:
         self.goal_reached_before = daily_goal_info(db, user)["reached"]
 
     def finish(self) -> dict:
+        freeze = settle_freezes(self.db, self.user)
         new_achievements = evaluate_achievements(self.db, self.user.id)
         xp_after = total_xp(self.db, self.user.id)
         level = level_info(xp_after)
@@ -294,6 +405,8 @@ class RewardTracker:
             "daily_goal": goal,
             "goal_just_reached": goal["reached"] and not self.goal_reached_before,
             "new_achievements": new_achievements,
+            # 本次动作触发的保护卡变化：{used: [日期], earned: [日期]}
+            "streak_freeze": freeze,
         }
 
 
@@ -342,6 +455,35 @@ def weekly_leaderboard(db: Session, me: User, limit: int = 10, ref: Optional[dat
     return {"week_start": week_start.isoformat(), "entries": entries[:limit], "me": mine, "total": len(entries)}
 
 
+def group_leaderboard(db: Session, me: User, member_ids: List[int], ref: Optional[date] = None) -> dict:
+    """小组内本周 XP 排行：与全站周榜同一口径（本周一起的 XP 流水），没有 XP 的成员也列出（0 分垫底）。"""
+    week_start = timeutil.monday_of(ref or timeutil.today())
+    if not member_ids:
+        return {"week_start": week_start.isoformat(), "entries": [], "me": None, "total": 0}
+    xp = dict(
+        db.query(XpEvent.user_id, func.sum(XpEvent.amount))
+        .filter(XpEvent.user_id.in_(member_ids), XpEvent.event_date >= week_start)
+        .group_by(XpEvent.user_id)
+        .all()
+    )
+    users = db.query(User).filter(User.id.in_(member_ids)).all()
+    users.sort(key=lambda u: (-int(xp.get(u.id) or 0), u.id))
+    entries = [
+        {
+            "rank": index,
+            "user_id": u.id,
+            "name": u.full_name or u.username,
+            "avatar": u.avatar or "🦉",
+            "xp": int(xp.get(u.id) or 0),
+            "is_me": u.id == me.id,
+            "is_demo": False,
+        }
+        for index, u in enumerate(users, start=1)
+    ]
+    mine = next((entry for entry in entries if entry["is_me"]), None)
+    return {"week_start": week_start.isoformat(), "entries": entries, "me": mine, "total": len(entries)}
+
+
 def heatmap(db: Session, user_id: int, weeks: int = 16, ref: Optional[date] = None) -> dict:
     ref = ref or timeutil.today()
     start = timeutil.monday_of(ref) - timedelta(weeks=weeks - 1)
@@ -382,3 +524,27 @@ def subject_breakdown(db: Session, user_id: int, days: int = 30, ref: Optional[d
         rest = sum(item["minutes"] for item in items[5:])
         items = items[:5] + [{"subject": "其他", "minutes": rest}]
     return items
+
+
+def subject_stats(db: Session, user_id: int, days: int = 30, ref: Optional[date] = None, top: int = 8) -> dict:
+    """按科目统计专注分钟与占比（科目为空记作"自由专注"，超过 top 个时其余合并为"其他"）。"""
+    ref = ref or timeutil.today()
+    since = ref - timedelta(days=days - 1)
+    label = func.coalesce(func.nullif(FocusRecord.subject, ""), "自由专注")
+    rows = (
+        db.query(label, func.sum(FocusRecord.duration_minutes), func.count(FocusRecord.id))
+        .filter(FocusRecord.user_id == user_id, FocusRecord.record_date >= since.isoformat(),
+                FocusRecord.record_date <= ref.isoformat())
+        .group_by(label)
+        .order_by(func.sum(FocusRecord.duration_minutes).desc())
+        .all()
+    )
+    items = [{"subject": s, "minutes": int(m or 0), "sessions": int(c or 0)} for s, m, c in rows if m]
+    if len(items) > top:
+        rest = items[top - 1:]
+        items = items[: top - 1] + [{"subject": "其他", "minutes": sum(i["minutes"] for i in rest),
+                                      "sessions": sum(i["sessions"] for i in rest)}]
+    total = sum(item["minutes"] for item in items)
+    for item in items:
+        item["percent"] = round(item["minutes"] / total * 100, 1) if total else 0
+    return {"days": days, "start": since.isoformat(), "end": ref.isoformat(), "total_minutes": total, "items": items}

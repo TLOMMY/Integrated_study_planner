@@ -18,10 +18,14 @@ const routes = [
       { path: 'profile', name: 'profile', component: () => import('@/views/ProfileView.vue'), meta: { title: '我的' } },
       { path: 'plans', name: 'plans', component: () => import('@/views/PlansView.vue'), meta: { title: '学习计划' } },
       { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue'), meta: { title: '设置' } },
+      { path: 'admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { title: '管理后台', admin: true } },
+      { path: 'report', name: 'report', component: () => import('@/views/WeeklyReportView.vue'), meta: { title: '每周报告' } },
+      { path: 'groups', name: 'groups', component: () => import('@/views/GroupsView.vue'), meta: { title: '学习小组' } },
     ],
   },
   { path: '/focus-timer', name: 'focus', component: () => import('@/views/FocusTimerView.vue'), meta: { title: '专注' } },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { title: '登录', public: true } },
+  { path: '/forgot-password', name: 'forgot', component: () => import('@/views/ForgotPasswordView.vue'), meta: { title: '找回密码', public: true } },
   { path: '/:pathMatch(.*)*', redirect: '/today-task' },
 ]
 
@@ -45,6 +49,7 @@ router.beforeEach(async (to) => {
       if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
     }
   }
+  if (to.meta.admin && !auth.user?.is_admin) return { name: 'home' }
   return true
 })
 

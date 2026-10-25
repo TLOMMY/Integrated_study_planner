@@ -28,6 +28,9 @@ def _settings_payload(db, user: User) -> dict:
         "resolved": providers.active_info(db, user),
         "env": {"configured": env is not None, "name": providers.ENV_NAME,
                 "model": env.model if env else None},
+        # 服务器配置（auto）下的思考强度，存在账号上；各自定义配置的思考强度见 providers[].thinking
+        "env_thinking": providers._thinking(user.ai_thinking),
+        "thinking_levels": [{"key": k, "label": v} for k, v in providers.THINKING_LABELS.items()],
         "providers": [providers.provider_to_dict(p, active) for p in items],
         "presets": providers.PRESETS,
         "allow_private_urls": settings.AI_ALLOW_PRIVATE_URLS,
@@ -53,13 +56,22 @@ def get_settings(user: CurrentUser, db: DB):
     return ok(_settings_payload(db, user))
 
 
-@router.put("/settings", summary="切换使用的模型：auto / rule / 配置 id")
+@router.put("/settings", summary="切换使用的模型（auto / rule / 配置 id）和/或设置当前模型的思考强度")
 def update_settings(payload: AiSettingsIn, user: CurrentUser, db: DB):
-    if payload.active.isdigit():
-        _owned(db, user, int(payload.active))
-    user.ai_provider = payload.active
+    if payload.active is not None:
+        if payload.active.isdigit():
+            _owned(db, user, int(payload.active))
+        user.ai_provider = payload.active
+    if payload.thinking is not None:
+        active = user.ai_provider or "auto"
+        provider = providers.get_owned(db, user, int(active)) if active.isdigit() else None
+        if provider is not None:
+            provider.thinking = payload.thinking
+        else:
+            user.ai_thinking = payload.thinking
     db.commit()
-    return ok(_settings_payload(db, user), "已切换模型")
+    message = "已切换模型" if payload.active is not None else f"思考强度：{providers.THINKING_LABELS[payload.thinking]}"
+    return ok(_settings_payload(db, user), message)
 
 
 @router.post("/providers", summary="新增模型配置（OpenAI 兼容）")
@@ -67,7 +79,8 @@ def create_provider(payload: AiProviderIn, user: CurrentUser, db: DB):
     if db.query(AiProvider).filter(AiProvider.user_id == user.id).count() >= MAX_PROVIDERS:
         raise ApiError(422, f"最多保存 {MAX_PROVIDERS} 套配置")
     provider = AiProvider(user_id=user.id, name=payload.name, base_url=_check_url(payload.base_url),
-                          model=payload.model, api_key_enc=crypto.encrypt(payload.api_key))
+                          model=payload.model, api_key_enc=crypto.encrypt(payload.api_key),
+                          thinking=payload.thinking)
     db.add(provider)
     db.flush()
     # 新增后直接启用，和 CC Switch 一样"加完即用"
@@ -88,6 +101,8 @@ def update_provider(provider_id: int, payload: AiProviderUpdateIn, user: Current
         provider.model = changes["model"]
     if "api_key" in changes and changes["api_key"] is not None:
         provider.api_key_enc = crypto.encrypt(changes["api_key"])
+    if changes.get("thinking"):
+        provider.thinking = changes["thinking"]
     db.commit()
     return ok(_settings_payload(db, user), "已保存")
 

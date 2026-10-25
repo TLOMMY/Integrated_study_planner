@@ -11,6 +11,10 @@ export const authApi = {
   register: (payload) => http.post('/auth/register', payload, noRedirect),
   demo: () => http.post('/auth/demo', null, noRedirect),
   refresh: () => http.post('/auth/refresh', null, noRedirect),
+  // 邮箱验证码：purpose = register 注册 / reset 找回密码 / bind 验证或换绑邮箱（需登录）
+  options: () => http.get('/auth/options', noRedirect),
+  sendEmailCode: (email, purpose) => http.post('/auth/email-code', { email, purpose }, noRedirect),
+  resetPassword: (payload) => http.post('/auth/reset-password', payload, noRedirect),
 }
 
 export const userApi = {
@@ -24,10 +28,21 @@ export const userApi = {
   saveStudyPrefs: (payload) => http.put('/users/me/study-prefs', payload),
   exportData: () => http.get('/users/me/export', { timeout: 30000 }),
   deleteAccount: (password) => http.delete('/users/me', { data: { password } }),
+  verifyEmail: (code) => http.post('/users/me/verify-email', { code }),
 }
 
 export const feedbackApi = {
   submit: (payload) => http.post('/feedback', payload),
+  // 截图先上传，提交反馈时引用返回的 name
+  uploadImage: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post('/feedback/images', form, { timeout: 30000 })
+  },
+  // 截图需要登录才能看：以 Blob 取回，再用 URL.createObjectURL 显示
+  image: (name) => http.get(`/feedback/images/${name}`, { responseType: 'blob', timeout: 30000 }),
+  mine: () => http.get('/feedback/mine'),
+  markRead: (id) => http.post(`/feedback/${id}/read`),
 }
 
 export const homeApi = {
@@ -104,6 +119,8 @@ export const aiApi = {
   commit: (draft) => http.post('/ai/plan/commit', draft),
   settings: () => http.get('/ai/settings'),
   activate: (active) => http.put('/ai/settings', { active }),
+  // 当前使用的模型的思考强度：off / high / max
+  setThinking: (thinking) => http.put('/ai/settings', { thinking }),
   createProvider: (payload) => http.post('/ai/providers', payload),
   updateProvider: (id, payload) => http.put(`/ai/providers/${id}`, payload),
   removeProvider: (id) => http.delete(`/ai/providers/${id}`),

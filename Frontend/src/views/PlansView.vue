@@ -58,10 +58,10 @@ onMounted(() => load())
 
 <template>
   <div class="flex h-full flex-col">
-    <header class="flex shrink-0 items-center gap-3 bg-surface px-4 pb-3 pt-[calc(var(--safe-top)+16px)] lg:px-10 lg:pt-6">
+    <header class="glass-bar flex shrink-0 items-center gap-3 bg-surface px-4 pb-3 pt-[calc(var(--safe-top)+16px)] lg:px-10 lg:pt-6">
       <button class="icon-btn lg:hidden" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
       <h1 class="flex-1 text-lg font-black text-ink lg:text-[22px]">学习计划</h1>
-      <button class="icon-btn bg-primary text-white" type="button" aria-label="新建计划" @click="editor = { open: true, plan: null }"><Icon icon="lucide:plus" width="20" /></button>
+      <button class="icon-btn bg-primary text-on-primary" type="button" aria-label="新建计划" @click="editor = { open: true, plan: null }"><Icon icon="lucide:plus" width="20" /></button>
     </header>
 
     <nav class="scrollbar-hide flex shrink-0 gap-2 overflow-x-auto bg-surface px-4 pb-3 lg:border-b lg:border-ink-line/70 lg:px-10">
@@ -76,7 +76,7 @@ onMounted(() => load())
         <span class="num flex-1 text-xs text-ink-mute">已选 {{ picked.size }} 项</span>
         <button class="chip" type="button" :disabled="!picked.size" :class="!picked.size && 'opacity-40'" @click="restore"><Icon icon="lucide:rotate-ccw" width="14" />恢复</button>
         <button class="chip border-danger/40 text-danger" type="button" :disabled="!picked.size" :class="!picked.size && 'opacity-40'" @click="purge"><Icon icon="lucide:trash-2" width="14" />彻底删除</button>
-        <button class="chip border-danger bg-danger text-white" type="button" @click="emptyTrash">清空</button>
+        <button class="chip border-danger bg-danger text-on-danger" type="button" @click="emptyTrash">清空</button>
       </div>
     </div>
 
@@ -94,7 +94,7 @@ onMounted(() => load())
           @click="openPlan(plan)"
         >
           <div class="flex items-start gap-3">
-            <span v-if="inTrash" class="mt-2.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border-2" :class="picked.has(plan.id) ? 'border-primary bg-primary text-white' : 'border-ink-line'">
+            <span v-if="inTrash" class="mt-2.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border-2" :class="picked.has(plan.id) ? 'border-primary bg-primary text-on-primary' : 'border-ink-line'">
               <Icon v-if="picked.has(plan.id)" icon="lucide:check" width="14" />
             </span>
             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl" :class="plan.source === 'ai' ? 'bg-xp-light text-xp' : 'bg-primary-light text-primary'">

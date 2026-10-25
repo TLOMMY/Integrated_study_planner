@@ -16,6 +16,9 @@ os.environ["DEEPSEEK_API_KEY"] = ""
 os.environ["SEED_DEMO"] = "1"
 os.environ["FEEDBACK_DIR"] = (_TMP / "feedback").as_posix()
 os.environ["ADMIN_EMAILS"] = "admin@example.com"
+# 邮件只记录在内存里（app.services.mail 读取），反馈通知不发出；测试绝不访问外网
+os.environ["MAIL_BACKEND"] = "memory"
+os.environ["FEEDBACK_WEBHOOK"] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 

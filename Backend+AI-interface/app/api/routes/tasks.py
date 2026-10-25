@@ -15,7 +15,7 @@ from app.api.deps import DB, CurrentUser
 from app.core import timeutil
 from app.core.errors import ApiError, ok
 from app.models import FocusRecord, StudyTask
-from app.schemas import TaskBatchIn, TaskIn, TaskUpdateIn
+from app.schemas import TaskBatchIn, TaskChecklistIn, TaskIn, TaskListRenameIn, TaskUpdateIn
 from app.services import tasks as task_service
 
 router = APIRouter(prefix="/task", tags=["任务"])
@@ -32,7 +32,9 @@ def list_tasks(
     start: Optional[str] = None,
     end: Optional[str] = None,
     plan_id: Optional[int] = None,
-    q: Optional[str] = Query(default=None, max_length=50, description="按标题 / 科目 / 备注搜索；配合 view=all 搜全部任务"),
+    q: Optional[str] = Query(default=None, max_length=50, description="按标题 / 科目 / 备注 / 标签 / 清单搜索；配合 view=all 搜全部任务"),
+    list_name: Optional[str] = Query(default=None, max_length=20, description="只看某个清单；传空串表示未归入清单的任务"),
+    tag: Optional[str] = Query(default=None, max_length=12, description="只看带某个标签的任务"),
 ):
     ref = timeutil.parse_date(date, timeutil.today())
     key = ref.isoformat()
@@ -41,9 +43,16 @@ def list_tasks(
     )
     if q and q.strip():
         like = f"%{q.strip().replace('%', '').replace('_', '')}%"
-        query = query.filter(or_(StudyTask.title.ilike(like), StudyTask.subject.ilike(like), StudyTask.note.ilike(like)))
+        query = query.filter(or_(StudyTask.title.ilike(like), StudyTask.subject.ilike(like), StudyTask.note.ilike(like),
+                                 StudyTask.tags.ilike(like), StudyTask.list_name.ilike(like)))
     if plan_id is not None:
         query = query.filter(StudyTask.plan_id == plan_id)
+    if list_name is not None:
+        name = list_name.strip()
+        query = query.filter(StudyTask.list_name == name if name else StudyTask.list_name.is_(None))
+    tag = (tag or "").strip().lstrip("#")
+    if tag:
+        query = query.filter(StudyTask.tags.like(task_service.tag_like(tag), escape="\\"))
 
     if view == "today":
         query = query.filter(StudyTask.due_date == key)
@@ -63,6 +72,8 @@ def list_tasks(
         query = query.filter(StudyTask.due_date >= range_start.isoformat(), StudyTask.due_date <= range_end.isoformat())
 
     items = query.all()
+    if tag:
+        items = [task for task in items if tag in task_service.task_tags(task)]
     if view == "all":
         items.sort(key=lambda t: (bool(t.completed), t.due_date or "9999-12-31", t.id))
         items = items[:50]
@@ -106,6 +117,7 @@ def create_task(payload: TaskIn, user: CurrentUser, db: DB):
         status="todo",
     )
     task_service.apply_schedule(task, due, payload.start_time, payload.duration_minutes)
+    task_service.apply_extras(task, payload.model_dump(exclude_unset=True))
     db.add(task)
     db.commit()
     db.refresh(task)
@@ -131,10 +143,83 @@ def update_task(task_id: int, payload: TaskUpdateIn, user: CurrentUser, db: DB):
         if start and not due:
             due = timeutil.today().isoformat()
         duration = changes.get("duration_minutes") or int(task.duration_minutes or 30)
+        old_anchor = task_service.task_anchor(task)
         task_service.apply_schedule(task, due, start, duration)
+        # 没有同时改提醒时，提醒跟着任务一起平移
+        if "remind_at" not in changes:
+            task_service.shift_reminder(task, old_anchor)
+    task_service.apply_extras(task, changes)
     db.commit()
     db.refresh(task)
     return ok(task_service.task_to_dict(task), "任务已更新")
+
+
+@router.put("/checklist/{task_id}", summary="整体保存子任务（勾选、增删、排序）")
+def save_checklist(task_id: int, payload: TaskChecklistIn, user: CurrentUser, db: DB):
+    task = task_service.get_owned_task(db, user, task_id)
+    task_service.apply_extras(task, {"checklist": payload.checklist})
+    db.commit()
+    db.refresh(task)
+    return ok(task_service.task_to_dict(task), "子任务已保存")
+
+
+@router.get("/lists", summary="清单与标签（含任务数 / 未完成数）")
+def list_groups(user: CurrentUser, db: DB):
+    return ok(task_service.group_summary(db, user))
+
+
+@router.put("/lists/rename", summary="重命名清单或标签（新名字已存在时合并）")
+def rename_group(payload: TaskListRenameIn, user: CurrentUser, db: DB):
+    if payload.old_name == payload.new_name:
+        return ok({"count": 0}, "名称没有变化")
+    count = task_service.rename_group(db, user, payload.kind, payload.old_name, payload.new_name)
+    if not count:
+        raise ApiError(404, "没有找到这个清单或标签")
+    db.commit()
+    label = "清单" if payload.kind == "list" else "标签"
+    return ok({"count": count}, f"已把{label}「{payload.old_name}」改名为「{payload.new_name}」")
+
+
+@router.delete("/lists/{name}", summary="删除清单或标签（只去掉名字，任务保留）")
+def clear_group(name: str, user: CurrentUser, db: DB, kind: Literal["list", "tag"] = "list"):
+    name = name.strip()
+    if not name:
+        raise ApiError(422, "请指定清单或标签名")
+    count = task_service.clear_group(db, user, kind, name)
+    db.commit()
+    label = "清单" if kind == "list" else "标签"
+    return ok({"count": count}, f"已删除{label}「{name}」，{count} 个任务保留")
+
+
+@router.get("/reminders", summary="未来一段时间内需要提醒的未完成任务（网页提醒与手机本地通知共用）")
+def upcoming_reminders(user: CurrentUser, db: DB, days: int = Query(default=7, ge=1, le=14)):
+    now = timeutil.now()
+    rows = (
+        task_service.visible_tasks(
+            db.query(StudyTask).filter(
+                StudyTask.user_id == user.id,
+                StudyTask.completed.is_(False),
+                StudyTask.remind_at.isnot(None),
+                StudyTask.remind_at >= now - timedelta(hours=1),
+                StudyTask.remind_at <= now + timedelta(days=days),
+            )
+        )
+        .order_by(StudyTask.remind_at)
+        .limit(200)
+        .all()
+    )
+    items = [
+        {
+            "id": task.id,
+            "title": task.title,
+            "remind_at": task.remind_at.strftime("%Y-%m-%dT%H:%M"),
+            "due_date": task.due_date,
+            "start_time": task.start_time.strftime("%H:%M") if task.start_time else None,
+            "subject": task.subject or "",
+        }
+        for task in rows
+    ]
+    return ok({"items": items, "now": now.strftime("%Y-%m-%dT%H:%M:%S")})
 
 
 @router.put("/complete/{task_id}", summary="完成任务，返回 XP / 成就回执")
@@ -174,7 +259,9 @@ def batch_tasks(payload: TaskBatchIn, user: CurrentUser, db: DB):
             base = timeutil.parse_date(task.due_date, None) or timeutil.today()
             day = base + timedelta(days=payload.shift_days)
         start_hm = task.start_time.strftime("%H:%M") if task.start_time else None
+        old_anchor = task_service.task_anchor(task)
         task_service.apply_schedule(task, day.isoformat(), start_hm, int(task.duration_minutes or 25))
+        task_service.shift_reminder(task, old_anchor)
     db.commit()
     label = target.strftime("%m/%d") if target else f"{'后' if payload.shift_days > 0 else '前'} {abs(payload.shift_days)} 天"
     return ok({"ids": ids, "count": len(ids)}, f"已把 {len(ids)} 个任务移到{label}")

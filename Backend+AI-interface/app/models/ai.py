@@ -17,5 +17,7 @@ class AiProvider(Base):
     model = Column(String(120), nullable=False)
     # Fernet 密文，明文 Key 永不出库、永不返回前端
     api_key_enc = Column(Text, nullable=True)
+    # 思考强度：off / high / max（只对支持思考模式的模型生效，其他模型自动不传）
+    thinking = Column(String(10), default="high")
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)

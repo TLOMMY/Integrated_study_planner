@@ -45,7 +45,7 @@ const submit = async () => {
       />
       <button
         v-if="text.trim()"
-        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary text-white active:scale-95"
+        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary active:scale-95"
         type="button"
         aria-label="添加"
         :disabled="busy"

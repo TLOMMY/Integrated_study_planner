@@ -80,6 +80,37 @@ class Settings:
     LOGIN_MAX_FAILS: int = int(_env("LOGIN_MAX_FAILS", default="5"))
     LOGIN_LOCK_MINUTES: int = int(_env("LOGIN_LOCK_MINUTES", default="10"))
 
+    # ---- B：邮件、验证码、反馈通知
+    # 邮件发送方式：smtp（真实发送）/ console（只写日志，开发用）/ memory（测试读取）；
+    # 留空时配置了 SMTP_HOST 就用 smtp，否则 console
+    MAIL_BACKEND: str = (_env("MAIL_BACKEND", default="") or "").lower()
+    SMTP_HOST: str = _env("SMTP_HOST", default="")
+    SMTP_PORT: int = int(_env("SMTP_PORT", default="465"))
+    SMTP_USER: str = _env("SMTP_USER", default="")
+    SMTP_PASSWORD: str = _env("SMTP_PASSWORD", default="")
+    # 1 = SSL（465 端口）；0 = 先明文连接再 STARTTLS（587 端口）
+    SMTP_SSL: bool = _env("SMTP_SSL", default="1").lower() in {"1", "true", "yes"}
+    SMTP_FROM: str = _env("SMTP_FROM", default="")
+    # 注册时是否必须填写邮箱验证码（默认关闭，演示与测试不受影响）
+    REQUIRE_EMAIL_VERIFY: bool = _env("REQUIRE_EMAIL_VERIFY", default="0").lower() in {"1", "true", "yes"}
+    # 同一邮箱每天最多发送的验证码数量
+    EMAIL_CODE_DAILY_LIMIT: int = int(_env("EMAIL_CODE_DAILY_LIMIT", default="10"))
+    # 新反馈通知：群机器人地址（企业微信 / 飞书 / 钉钉，自动识别）、钉钉加签密钥、通知邮箱（逗号分隔）。
+    # 管理后台「设置」里填写的值优先于这里
+    FEEDBACK_WEBHOOK: str = _env("FEEDBACK_WEBHOOK", default="")
+    FEEDBACK_WEBHOOK_SECRET: str = _env("FEEDBACK_WEBHOOK_SECRET", default="")
+    FEEDBACK_NOTIFY_EMAILS: str = _env("FEEDBACK_NOTIFY_EMAILS", default="")
+    # 网站对外地址（通知消息里的"后台链接"），如 https://app.xueyeguanjia.com
+    APP_PUBLIC_URL: str = _env("APP_PUBLIC_URL", default="")
+
+    # ---- F：联网搜索（AI 智能体推荐课程 / 学习资源时调用，见 app/ai/search.py）
+    # AI_WEB_SEARCH=0 关闭全部联网搜索工具（B 站 + 通用搜索）
+    AI_WEB_SEARCH: bool = _env("AI_WEB_SEARCH", default="1").lower() in {"1", "true", "yes"}
+    # 通用搜索服务商：bocha（博查）/ tavily / serper；留空则依次尝试免 Key 的 360 搜索、必应、DuckDuckGo 网页结果（可能不稳定）
+    SEARCH_PROVIDER: str = (_env("SEARCH_PROVIDER", default="") or "").strip().lower()
+    SEARCH_API_KEY: Optional[str] = _env("SEARCH_API_KEY")
+    SEARCH_TIMEOUT: int = int(_env("SEARCH_TIMEOUT", default="8"))
+
 
 settings = Settings()
 

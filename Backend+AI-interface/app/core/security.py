@@ -10,6 +10,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+from app.core import timeutil
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.errors import ApiError
@@ -79,4 +80,54 @@ def get_current_user(
         raise ApiError(401, "密码已修改或已在其他设备退出，请重新登录")
     if not user.is_active:
         raise ApiError(403, "账号已被停用")
+    touch_last_seen(db, user)
+    return user
+
+
+# ---------------------------------------------------------------- v4 · B：活跃记录、管理员、可选登录
+SEEN_INTERVAL = timedelta(minutes=5)
+ACTIVE_DAYS_KEEP = 60
+
+
+def touch_last_seen(db: Session, user: User) -> None:
+    """更新最近活跃时间：每 5 分钟最多写一次库；跨天时记下活跃日期（后台统计日活/周活用）。"""
+    current = timeutil.now()
+    if user.last_seen_at and current - user.last_seen_at < SEEN_INTERVAL:
+        return
+    user.last_seen_at = current
+    day = current.date().isoformat()
+    days = [d for d in (user.active_days or "").split(",") if d]
+    if day not in days:
+        cutoff = (current.date() - timedelta(days=ACTIVE_DAYS_KEEP)).isoformat()
+        user.active_days = ",".join([d for d in days if d >= cutoff] + [day])
+    try:
+        db.commit()
+    except Exception:  # noqa: BLE001 - 活跃记录写失败不影响正常请求
+        db.rollback()
+
+
+def is_admin_user(user: Optional[User]) -> bool:
+    return bool(user) and (bool(user.is_admin) or (user.email or "").lower() in settings.ADMIN_EMAILS)
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not is_admin_user(user):
+        raise ApiError(403, "只有管理员可以访问")
+    return user
+
+
+def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """登录可选的接口使用：凭证缺失或无效时返回 None，不报错。"""
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        payload = jwt.decode(credentials.credentials, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user = db.get(User, int(payload.get("user_id") or payload.get("sub")))
+    except (jwt.PyJWTError, TypeError, ValueError):
+        return None
+    if user is None or not user.is_active or int(payload.get("ver", 0)) != int(user.token_version or 0):
+        return None
     return user

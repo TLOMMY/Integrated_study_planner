@@ -15,6 +15,7 @@
   "dependencies": {
     "@capacitor/android": "8.5.3",
     "@capacitor/core": "8.5.3",
+    "@capacitor/local-notifications": "8.3.1",
     "@iconify-json/lucide": "1.2.147",
     "@iconify/vue": "^5.0.1",
     "axios": "^1.16.0",

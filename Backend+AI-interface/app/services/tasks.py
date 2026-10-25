@@ -3,8 +3,11 @@
 任务领域逻辑（对标滴答清单）：今日/即将/逾期视图、四级优先级、重复任务、完成回执。
 """
 
-from datetime import date, timedelta
-from typing import Dict, Optional
+import json
+import uuid
+from datetime import date, datetime, timedelta
+from typing import Dict, List, Optional
+from urllib.parse import urlsplit
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -25,8 +28,162 @@ def visible_tasks(query):
 REPEAT_LABELS = {"none": "不重复", "daily": "每天", "weekdays": "工作日", "weekly": "每周"}
 
 
+# ---------------------------------------------------------------- v4：标签 / 清单 / 子任务 / 链接 / 提醒
+BILIBILI_HOSTS = ("bilibili.com", "b23.tv")
+
+
+def load_list(raw: Optional[str]) -> list:
+    """读取 JSON 数组列；空值或损坏的数据当作空数组，避免一条坏数据让整个列表接口报错。"""
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    return value if isinstance(value, list) else []
+
+
+def dump_list(items: Optional[list]) -> Optional[str]:
+    return json.dumps(items, ensure_ascii=False) if items else None
+
+
+def link_source(url: str, source: Optional[str] = None) -> str:
+    host = (urlsplit(url).hostname or "").lower()
+    if any(host == h or host.endswith("." + h) for h in BILIBILI_HOSTS):
+        return "bilibili"
+    return source or "web"
+
+
+def clean_checklist(items) -> List[dict]:
+    """统一子任务结构 [{id, title, done}]；缺 id 的补一个短 id，重复 id 重新生成。"""
+    result, seen = [], set()
+    for item in items or []:
+        data = item if isinstance(item, dict) else item.model_dump()
+        title = str(data.get("title") or "").strip()[:100]
+        if not title:
+            continue
+        item_id = str(data.get("id") or "")[:40]
+        if not item_id or item_id in seen:
+            item_id = uuid.uuid4().hex[:10]
+        seen.add(item_id)
+        result.append({"id": item_id, "title": title, "done": bool(data.get("done"))})
+    return result
+
+
+def clean_links(items) -> List[dict]:
+    result, seen = [], set()
+    for item in items or []:
+        data = item if isinstance(item, dict) else item.model_dump()
+        url = str(data.get("url") or "").strip()
+        if not url or url in seen or urlsplit(url).scheme.lower() not in ("http", "https"):
+            continue
+        seen.add(url)
+        title = str(data.get("title") or "").strip()[:100] or (urlsplit(url).hostname or url)[:100]
+        result.append({"title": title, "url": url, "source": link_source(url, data.get("source"))})
+    return result
+
+
+def parse_remind(value: Optional[str]) -> Optional[datetime]:
+    return datetime.fromisoformat(value) if value else None
+
+
+def apply_extras(task: StudyTask, changes: dict) -> None:
+    """把请求里出现的 v4 字段写到任务上（只处理传入的键，未传的保持不变）。"""
+    if "tags" in changes:
+        task.tags = dump_list(changes["tags"] or [])
+    if "list_name" in changes:
+        task.list_name = (changes["list_name"] or "").strip() or None
+    if "checklist" in changes:
+        task.checklist = dump_list(clean_checklist(changes["checklist"]))
+    if "links" in changes:
+        task.links = dump_list(clean_links(changes["links"]))
+    if "remind_at" in changes:
+        task.remind_at = parse_remind(changes["remind_at"])
+
+
+def task_anchor(task: StudyTask) -> Optional[tuple]:
+    """任务的时间锚点 (是否定时, 时间)：有时刻用开始时间，只有日期时用当天 0 点；用于提醒随任务一起平移。"""
+    if task.start_time:
+        return True, task.start_time
+    day = timeutil.parse_date(task.due_date)
+    return (False, datetime.combine(day, datetime.min.time())) if day else None
+
+
+def shift_reminder(task: StudyTask, old_anchor: Optional[tuple]) -> None:
+    """改期后提醒时间按同样的偏移平移（例如原来"提前 15 分钟"，改到明天仍是提前 15 分钟）。
+    从"只有日期"变成"有具体时刻"（或反过来）时不平移，避免"当天 9:00"被推到奇怪的时间。"""
+    new_anchor = task_anchor(task)
+    if not (task.remind_at and old_anchor and new_anchor) or old_anchor[0] != new_anchor[0]:
+        return
+    if old_anchor[1] != new_anchor[1]:
+        task.remind_at = task.remind_at + (new_anchor[1] - old_anchor[1])
+
+
+def task_tags(task: StudyTask) -> List[str]:
+    return [str(tag) for tag in load_list(task.tags)]
+
+
+def tag_like(tag: str) -> str:
+    """标签存成 JSON 数组文本，先用 LIKE 粗筛 "标签" 这一段，再在 Python 里精确比对。"""
+    token = json.dumps(tag, ensure_ascii=False).replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{token}%"
+
+
+def group_summary(db: Session, user: User) -> dict:
+    """清单与标签的使用情况：名称、任务总数、未完成数。按未完成数、名称排序。"""
+    rows = visible_tasks(
+        db.query(StudyTask.list_name, StudyTask.tags, StudyTask.completed).filter(StudyTask.user_id == user.id)
+    ).all()
+    lists: Dict[str, dict] = {}
+    tags: Dict[str, dict] = {}
+    for list_name, raw_tags, done in rows:
+        names = [(lists, list_name)] if list_name else []
+        names += [(tags, str(tag)) for tag in load_list(raw_tags)]
+        for bucket, name in names:
+            entry = bucket.setdefault(name, {"name": name, "total": 0, "open": 0})
+            entry["total"] += 1
+            entry["open"] += 0 if done else 1
+    order = lambda items: sorted(items, key=lambda e: (-e["open"], -e["total"], e["name"]))  # noqa: E731
+    return {"lists": order(lists.values()), "tags": order(tags.values())}
+
+
+def rename_group(db: Session, user: User, kind: str, old: str, new: str) -> int:
+    """重命名清单 / 标签；新名字已存在时自然合并（标签去重）。返回受影响的任务数。"""
+    query = db.query(StudyTask).filter(StudyTask.user_id == user.id)
+    if kind == "list":
+        return query.filter(StudyTask.list_name == old).update({"list_name": new}, synchronize_session=False)
+    count = 0
+    for task in query.filter(StudyTask.tags.like(tag_like(old), escape="\\")).all():
+        tags = task_tags(task)
+        if old not in tags:
+            continue
+        merged = []
+        for tag in tags:
+            tag = new if tag == old else tag
+            if tag not in merged:
+                merged.append(tag)
+        task.tags = dump_list(merged)
+        count += 1
+    return count
+
+
+def clear_group(db: Session, user: User, kind: str, name: str) -> int:
+    """删除清单 / 标签：只把名字从任务上去掉，任务本身保留。"""
+    query = db.query(StudyTask).filter(StudyTask.user_id == user.id)
+    if kind == "list":
+        return query.filter(StudyTask.list_name == name).update({"list_name": None}, synchronize_session=False)
+    count = 0
+    for task in query.filter(StudyTask.tags.like(tag_like(name), escape="\\")).all():
+        tags = task_tags(task)
+        if name in tags:
+            task.tags = dump_list([tag for tag in tags if tag != name])
+            count += 1
+    return count
+
+
 def task_to_dict(task: StudyTask, ref: Optional[date] = None) -> dict:
     ref = ref or timeutil.today()
+    checklist = load_list(task.checklist)
     return {
         "id": task.id,
         "plan_id": task.plan_id,
@@ -48,6 +205,13 @@ def task_to_dict(task: StudyTask, ref: Optional[date] = None) -> dict:
         "focus_minutes": int(task.focus_minutes or 0),
         "pomodoros": int(task.pomodoros or 0),
         "source": task.source or "manual",
+        "tags": [str(tag) for tag in load_list(task.tags)],
+        "list_name": task.list_name or "",
+        "checklist": checklist,
+        "checklist_done": sum(1 for item in checklist if isinstance(item, dict) and item.get("done")),
+        "checklist_total": len(checklist),
+        "links": load_list(task.links),
+        "remind_at": task.remind_at.strftime("%Y-%m-%dT%H:%M") if task.remind_at else None,
         "created_at": task.created_at.isoformat() if task.created_at else None,
     }
 
@@ -118,6 +282,12 @@ def spawn_next(db: Session, task: StudyTask) -> Optional[StudyTask]:
         source="repeat",
         status="todo",
         completed=False,
+        tags=task.tags,
+        list_name=task.list_name,
+        # 子任务带到下一次，但全部重置为未完成
+        checklist=dump_list([{**item, "done": False} for item in load_list(task.checklist) if isinstance(item, dict)]),
+        links=task.links,
+        remind_at=task.remind_at,
     )
     apply_schedule(
         child,
@@ -125,6 +295,8 @@ def spawn_next(db: Session, task: StudyTask) -> Optional[StudyTask]:
         task.start_time.strftime("%H:%M") if task.start_time else None,
         int(task.duration_minutes or 30),
     )
+    # 提醒按"距任务开始的偏移"带到下一次
+    shift_reminder(child, task_anchor(task))
     db.add(child)
     db.flush()
     return child

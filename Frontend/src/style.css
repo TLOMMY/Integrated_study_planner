@@ -11,8 +11,8 @@ html,
 body {
   height: 100%;
   margin: 0;
-  background: #e8ecf6;
-  color: #0f172a;
+  background: rgb(var(--c-page));
+  color: rgb(var(--c-ink));
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
 }
@@ -40,8 +40,8 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(1200px 600px at 20% 10%, #dfe6ff 0%, transparent 60%),
-      radial-gradient(900px 500px at 90% 90%, #f3e8ff 0%, transparent 60%), #e8ecf6;
+    background: radial-gradient(1200px 600px at 20% 10%, rgb(var(--c-page-glow-1)) 0%, transparent 60%),
+      radial-gradient(900px 500px at 90% 90%, rgb(var(--c-page-glow-2)) 0%, transparent 60%), rgb(var(--c-page));
   }
   #app {
     height: auto;
@@ -50,7 +50,7 @@ body {
     width: 390px;
     height: min(844px, calc(100vh - 48px));
     border-radius: 40px;
-    box-shadow: 0 40px 80px -30px rgba(30, 41, 99, 0.45), 0 0 0 10px #0f172a, 0 0 0 12px #334155;
+    box-shadow: var(--shadow-phone), 0 0 0 10px rgb(var(--c-bezel-inner)), 0 0 0 12px rgb(var(--c-bezel-outer));
   }
 }
 
@@ -62,13 +62,13 @@ body {
     @apply inline-flex items-center justify-center gap-1.5 rounded-2xl px-4 py-3 text-sm font-bold transition active:scale-[.97] disabled:pointer-events-none disabled:opacity-50;
   }
   .btn-primary {
-    @apply btn bg-primary text-white shadow-lift hover:bg-primary-dark;
+    @apply btn bg-primary text-on-primary shadow-lift hover:bg-primary-dark;
   }
   .btn-ghost {
     @apply btn bg-background text-ink-soft hover:bg-ink-line/60;
   }
   .btn-danger {
-    @apply btn bg-danger-light text-danger hover:bg-red-100;
+    @apply btn bg-danger-light text-danger hover:bg-danger-soft;
   }
   .icon-btn {
     @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface text-ink-soft shadow-soft transition active:scale-95;
@@ -90,7 +90,7 @@ body {
   }
   .skeleton {
     @apply animate-shimmer rounded-2xl bg-[length:200%_100%];
-    background-image: linear-gradient(90deg, #eef1f6 0%, #f8fafc 50%, #eef1f6 100%);
+    background-image: linear-gradient(90deg, rgb(var(--c-skeleton-base)) 0%, rgb(var(--c-skeleton-shine)) 50%, rgb(var(--c-skeleton-base)) 100%);
   }
   .num {
     @apply font-num tabular-nums;
@@ -112,7 +112,7 @@ body {
 @media (min-width: 1024px) {
   .scrollbar-hide {
     scrollbar-width: thin;
-    scrollbar-color: #cbd5e1 transparent;
+    scrollbar-color: rgb(var(--c-scrollbar)) transparent;
   }
   .scrollbar-hide::-webkit-scrollbar {
     display: block;
@@ -121,10 +121,182 @@ body {
   }
   .scrollbar-hide::-webkit-scrollbar-thumb {
     border-radius: 8px;
-    background: #cbd5e1;
+    background: rgb(var(--c-scrollbar));
   }
   .scrollbar-hide::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+/* ==================================================================
+ * Liquid Glass（只在 data-glass 主题下生效：晨光杏桃 / 雾松青 / 夜读靛 / 赤陶纸）
+ *
+ * 分层：
+ *   壁纸        .phone 底色 = --wallpaper（4 层径向 + 1 层线性）
+ *   导航层玻璃   .glass（浮动胶囊 / 按钮：FocusMiniBar、批量工具条等）、.glass-bar（贴边的条：页头、BottomNav、SideNav）、
+ *               .icon-btn（页头的圆形图标按钮）
+ *   内容层材质   bg-surface 按 --surface-alpha 半透明；.card / .material（BottomSheet、确认框、庆祝层）再加 --content-filter
+ * 禁止玻璃叠玻璃：.glass 里的子元素不再用 .glass；内容层（列表、卡片、表格、弹窗）一律不用 .glass。
+ * 所有数值都来自 themes/index.js 的令牌，这里不写颜色。
+ * ================================================================== */
+:root[data-glass] .phone {
+  background: var(--wallpaper);
+}
+
+/* 玻璃宿主：给 ::after 高光提供定位上下文。放在 components 层，absolute / fixed / sticky 等工具类仍然优先 */
+@layer components {
+  .glass,
+  .glass-bar,
+  .icon-btn {
+    position: relative;
+  }
+}
+:root[data-glass] .glass,
+:root[data-glass] .glass-bar,
+:root[data-glass] :where(.icon-btn:not([class*='bg-primary'])) {
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: var(--glass-filter);
+  backdrop-filter: var(--glass-filter);
+  box-shadow: var(--glass-shadow);
+  isolation: isolate;
+}
+:root[data-glass] .glass,
+:root[data-glass] :where(.icon-btn:not([class*='bg-primary'])) {
+  border: 0.5px solid var(--glass-stroke);
+}
+/* 贴边的条只在内侧留一道玻璃描边，保留各自的 border-t / border-b / border-r 方向 */
+:root[data-glass] .glass-bar {
+  border-color: var(--glass-stroke);
+}
+/* 湿玻璃高光：独立的 ::after 径向高光，screen 混合；放在内容下面，不影响文字对比度 */
+:root[data-glass] .glass::after,
+:root[data-glass] .glass-bar::after,
+:root[data-glass] :where(.icon-btn:not([class*='bg-primary']))::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--glass-sheen);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+/* 玻璃上的文字用正文色（普通主题下这些控件是反色块） */
+:root[data-glass] .glass-ink {
+  color: rgb(var(--c-ink));
+}
+
+/* 禁止玻璃叠玻璃：玻璃条 / 玻璃块里的图标按钮不再是玻璃，只留一层淡填充与描边 */
+:root[data-glass] :is(.glass, .glass-bar) :where(.icon-btn:not([class*='bg-primary'])) {
+  background: rgb(var(--c-surface) / 0.18);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+:root[data-glass] :is(.glass, .glass-bar) :where(.icon-btn)::after {
+  display: none;
+}
+
+/* 内容层标准材质：更厚的半透明 + 模糊 */
+:root[data-glass] .card,
+:root[data-glass] .material {
+  -webkit-backdrop-filter: var(--content-filter);
+  backdrop-filter: var(--content-filter);
+}
+
+/* ---- 降低透明度：系统设置（prefers-reduced-transparency）或设置页开关 → 玻璃换成高不透明实色、去掉模糊 */
+:root[data-glass][data-transparency='reduce'] {
+  --surface-alpha: var(--rt-surface-alpha);
+}
+:root[data-glass][data-transparency='reduce'] .glass,
+:root[data-glass][data-transparency='reduce'] .glass-bar,
+:root[data-glass][data-transparency='reduce'] :where(.icon-btn:not([class*='bg-primary'])) {
+  background: var(--rt-glass-fill);
+}
+:root[data-transparency='reduce'] *,
+:root[data-transparency='reduce'] *::after {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+:root[data-transparency='reduce'] .glass::after,
+:root[data-transparency='reduce'] .glass-bar::after,
+:root[data-transparency='reduce'] .icon-btn::after {
+  display: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  html:root[data-glass]:not([data-transparency='normal']) {
+    --surface-alpha: var(--rt-surface-alpha);
+  }
+  html:root[data-glass]:not([data-transparency='normal']) .glass,
+  html:root[data-glass]:not([data-transparency='normal']) .glass-bar,
+  html:root[data-glass]:not([data-transparency='normal']) :where(.icon-btn:not([class*='bg-primary'])) {
+    background: var(--rt-glass-fill);
+  }
+  html:root:not([data-transparency='normal']) *,
+  html:root:not([data-transparency='normal']) *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  html:root:not([data-transparency='normal']) .glass::after,
+  html:root:not([data-transparency='normal']) .glass-bar::after,
+  html:root:not([data-transparency='normal']) .icon-btn::after {
+    display: none;
+  }
+}
+
+/* ---- 增强对比度：系统设置（prefers-contrast: more）或设置页开关 → 次要文字 / 分隔线加深；玻璃描边加深、底色提高 */
+:root[data-contrast='more'] {
+  --c-ink-mute: var(--c-hc-ink-mute);
+  --c-ink-line: var(--c-hc-ink-line);
+  --glass-stroke: var(--hc-glass-stroke);
+  --glass-fill: var(--hc-glass-fill);
+}
+@media (prefers-contrast: more) {
+  html:root:not([data-contrast='normal']) {
+    --c-ink-mute: var(--c-hc-ink-mute);
+    --c-ink-line: var(--c-hc-ink-line);
+    --glass-stroke: var(--hc-glass-stroke);
+    --glass-fill: var(--hc-glass-fill);
+  }
+}
+
+/* ---- 显示边框（设置页开关）→ 玻璃、卡片、按钮、输入框加 1px 实线 outline */
+:root[data-borders='on'] :is(.glass, .glass-bar, .card, .material, .btn, .icon-btn, .chip, .field) {
+  outline: 1px solid var(--outline-strong);
+  outline-offset: -1px;
+}
+
+/* ---- 减少动态效果：位移 / 缩放动画改为透明度变化，装饰动画停用 */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .animate-rise,
+  .animate-pop,
+  .animate-check,
+  .page-enter {
+    animation: fade-in 0.2s ease both !important;
+  }
+  .animate-confetti,
+  .animate-flicker,
+  .animate-shimmer {
+    animation: none !important;
+  }
+  .animate-confetti {
+    display: none;
+  }
+  /* 抽屉进出场：位移改为透明度（其他元素上的 translate 多用于居中定位，不能统一清掉） */
+  .sheet-panel {
+    transform: none !important;
+    transition: opacity 0.2s ease !important;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 

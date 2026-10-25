@@ -7,7 +7,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import ai_settings, auth, feedback, imports, planning, study, tasks, timetable, users
+from app.api.routes import (
+    admin, ai_chat, ai_extras, ai_settings, auth, exams, feedback, imports, planning, social, study, tasks, timetable, users,
+)
 from app.core.config import DEFAULT_SECRET, settings
 from app.core.errors import ok, register_exception_handlers
 from app.core.migrate import init_database
@@ -39,7 +41,7 @@ app.add_middleware(
 )
 register_exception_handlers(app)
 
-for module in (auth, users, tasks, timetable, imports, study, ai_settings, feedback):
+for module in (auth, users, tasks, timetable, imports, study, ai_settings, feedback, admin, ai_chat, ai_extras, exams, social):
     app.include_router(module.router)
 for router in planning.routers:
     app.include_router(router)

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { timetableApi } from '@/api'
 import { ApiError } from '@/api/request'
+import { examApi } from '@/api/growth'
 import { useUiStore } from './ui'
 
 export const useTimetableStore = defineStore('timetable', {
@@ -8,6 +9,9 @@ export const useTimetableStore = defineStore('timetable', {
     data: null,
     week: null,
     loading: false,
+    exams: [],
+    pastExams: [],
+    examsLoaded: false,
   }),
 
   getters: {
@@ -64,6 +68,39 @@ export const useTimetableStore = defineStore('timetable', {
       this.data = await timetableApi.saveSettings(payload)
       this.week = this.data.week
       useUiStore().success('学期设置已保存')
+    },
+
+    // ------------------------------------------------------------ 考试倒计时
+    async loadExams() {
+      const data = await examApi.list()
+      this.exams = data.upcoming
+      this.pastExams = data.past
+      this.examsLoaded = true
+      return data
+    },
+
+    async saveExam(payload, id = null) {
+      if (id) await examApi.update(id, payload)
+      else await examApi.create(payload)
+      useUiStore().success(id ? '考试已更新' : '考试已添加')
+      await this.loadExams()
+    },
+
+    async removeExam(exam) {
+      const ui = useUiStore()
+      const ok = await ui.confirm({ title: '删除考试', message: `确定删除「${exam.title}」吗？`, confirmText: '删除', danger: true })
+      if (!ok) return false
+      await examApi.remove(exam.id)
+      ui.success('考试已删除')
+      await this.loadExams()
+      return true
+    },
+
+    /** 导入分享课表后直接用返回的课表刷新。 */
+    applyPayload(data) {
+      if (!data) return
+      this.data = data
+      this.week = data.week
     },
   },
 })

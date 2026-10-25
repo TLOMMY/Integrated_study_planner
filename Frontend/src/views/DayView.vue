@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
@@ -110,11 +110,60 @@ const planFree = (slot) => {
   editor.value = { open: true, task: null, defaults: { due_date: selected.value, start_time: slot.start_time, duration_minutes: Math.min(slot.minutes, 60) } }
 }
 const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativeDay(selected.value)}的学习，避开课程` } })
+
+// ---------------------------------------------------------------- 拖拽改期 + 撤销
+const undo = ref(null)
+let undoTimer = null
+const showUndo = (message, revert) => {
+  clearTimeout(undoTimer)
+  undo.value = { message, revert, busy: false }
+  undoTimer = setTimeout(() => (undo.value = null), 6000)
+}
+const runUndo = async () => {
+  const current = undo.value
+  if (!current || current.busy) return
+  current.busy = true
+  try {
+    await current.revert()
+    ui.toast('已撤销', 'info')
+    undo.value = null
+    refresh()
+  } catch (error) {
+    current.busy = false
+    ui.fail(error)
+  }
+}
+onBeforeUnmount(() => clearTimeout(undoTimer))
+
+/** 周 / 月视图：拖到另一天，只改日期（时刻、时长保留，提醒随之平移）。 */
+const moveToDate = async ({ task, date }) => {
+  const pending = tasks.reschedule(task, { due_date: date })
+  // 先在界面上挪过去，请求失败再刷新回来
+  task.due_date = date
+  try {
+    const revert = await pending
+    if (revert) showUndo(`已移到 ${dayjs(date).format('M月D日')} ${weekdayLabel(date)}`, revert)
+  } catch (error) {
+    ui.fail(error)
+  }
+  refresh()
+}
+
+/** 日视图时间轴：上下拖动改开始时间（冲突时提示，但仍然保存）。 */
+const moveToTime = async ({ task, start_time: startTime, conflict }) => {
+  try {
+    const revert = await tasks.reschedule(task, { due_date: task.due_date, start_time: startTime })
+    if (revert) showUndo(`已改到 ${startTime} 开始${conflict.length ? `，与「${conflict[0]}」时间重叠` : ''}`, revert)
+  } catch (error) {
+    ui.fail(error)
+  }
+  refresh()
+}
 </script>
 
 <template>
   <div class="flex h-full flex-col">
-    <header class="shrink-0 bg-surface px-5 pb-3 pt-[calc(var(--safe-top)+16px)] lg:border-b lg:border-ink-line/70 lg:px-10 lg:pt-6">
+    <header class="glass-bar shrink-0 bg-surface px-5 pb-3 pt-[calc(var(--safe-top)+16px)] lg:border-b lg:border-ink-line/70 lg:px-10 lg:pt-6">
       <div class="desk-page">
         <div class="flex items-center justify-between gap-3">
           <div>
@@ -166,7 +215,7 @@ const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativ
               :key="d.key"
               type="button"
               class="flex flex-col items-center rounded-xl py-1.5 transition lg:flex-row lg:justify-center lg:gap-2"
-              :class="d.key === selected ? 'bg-primary text-white' : d.today ? 'text-primary hover:bg-primary-light' : 'text-ink-soft hover:bg-background'"
+              :class="d.key === selected ? 'bg-primary text-on-primary' : d.today ? 'text-primary hover:bg-primary-light' : 'text-ink-soft hover:bg-background'"
               @click="selected = d.key"
             >
               <span class="text-[10px] font-bold opacity-80 lg:text-xs">{{ d.label }}</span>
@@ -196,7 +245,7 @@ const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativ
                 <div class="rounded-2xl bg-surface p-2.5 shadow-soft"><p class="num text-lg font-black text-ink">{{ day.summary.tasks_done }}/{{ day.summary.tasks }}</p><p class="text-[10px] font-bold text-ink-mute">任务</p></div>
                 <div class="rounded-2xl bg-surface p-2.5 shadow-soft"><p class="num text-lg font-black text-success">{{ shortMinutes(day.summary.free_minutes) }}</p><p class="text-[10px] font-bold text-ink-mute">可支配</p></div>
               </div>
-              <button class="hidden w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-primary to-xp p-4 text-left text-white shadow-lift transition hover:brightness-105 lg:flex" type="button" @click="askAi">
+              <button class="hidden w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-primary to-xp p-4 text-left text-on-primary shadow-lift transition hover:brightness-105 lg:flex" type="button" @click="askAi">
                 <Icon icon="lucide:sparkles" width="22" />
                 <span class="flex-1 text-sm font-bold">让 AI 按空闲时段安排{{ relativeDay(selected) }}的学习</span>
                 <Icon icon="lucide:chevron-right" width="18" />
@@ -213,7 +262,7 @@ const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativ
                   <TaskItem v-for="t in day.unscheduled" :key="t.id" :task="t" @toggle="toggle" @open="openTask" @focus="(x) => router.push(focusRoute(x))" />
                 </div>
               </section>
-              <DayTimeline v-if="day.items.length" :day="day" @toggle="toggle" @focus="(t) => router.push(focusRoute(t))" @open="openTask" @plan-free="planFree" />
+              <DayTimeline v-if="day.items.length" :day="day" @toggle="toggle" @focus="(t) => router.push(focusRoute(t))" @open="openTask" @plan-free="planFree" @reschedule="moveToTime" />
               <EmptyState v-else-if="!day.unscheduled.length" compact icon="lucide:calendar-heart" title="这一天没有课程和定时任务" />
             </div>
 
@@ -226,7 +275,7 @@ const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativ
               </div>
             </section>
 
-            <button class="mt-5 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-primary to-xp p-4 text-left text-white shadow-lift lg:hidden" type="button" @click="askAi">
+            <button class="mt-5 flex w-full items-center gap-3 rounded-3xl bg-gradient-to-r from-primary to-xp p-4 text-left text-on-primary shadow-lift lg:hidden" type="button" @click="askAi">
               <Icon icon="lucide:sparkles" width="22" />
               <span class="flex-1 text-sm font-bold">让 AI 按空闲时段安排{{ relativeDay(selected) }}的学习</span>
               <Icon icon="lucide:chevron-right" width="18" />
@@ -234,10 +283,21 @@ const askAi = () => router.push({ name: 'ai', query: { q: `帮我安排${relativ
           </div>
         </template>
 
-        <WeekView v-else-if="mode === 'week'" :selected="selected" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" />
-        <MonthView v-else :selected="selected" :month="month" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @month="(m) => (month = m)" />
+        <WeekView v-else-if="mode === 'week'" :selected="selected" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @move="moveToDate" />
+        <MonthView v-else :selected="selected" :month="month" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @month="(m) => (month = m)" @move="moveToDate" />
       </div>
     </div>
+
+    <!-- 拖拽改期后的撤销条 -->
+    <Transition enter-active-class="transition duration-200" enter-from-class="translate-y-4 opacity-0" leave-active-class="transition duration-150" leave-to-class="translate-y-4 opacity-0">
+      <div v-if="undo" class="absolute inset-x-3 bottom-3 z-30 flex items-center gap-3 rounded-2xl bg-inverse px-4 py-3 text-inverse-ink shadow-2xl lg:inset-x-auto lg:left-1/2 lg:w-[460px] lg:-translate-x-1/2" role="status">
+        <Icon icon="lucide:circle-check" width="18" class="shrink-0 text-success" />
+        <span class="min-w-0 flex-1 text-sm font-semibold">{{ undo.message }}</span>
+        <button class="flex shrink-0 items-center gap-1 rounded-xl bg-inverse-ink/15 px-3 py-1.5 text-xs font-bold hover:bg-inverse-ink/25 disabled:opacity-50" type="button" :disabled="undo.busy" @click="runUndo">
+          <Icon icon="lucide:undo-2" width="14" />撤销
+        </button>
+      </div>
+    </Transition>
 
     <TaskEditor :open="editor.open" :task="editor.task" :defaults="editor.defaults" @close="editor.open = false" @saved="refresh" />
   </div>
