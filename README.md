@@ -283,10 +283,6 @@ cd e2e && npm install && npm test                # 端到端测试，使用本�
 | v3.0 | ✅ 已完成 | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
 | v4.0 | ✅ 已完成 | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
 
-### AI 贡献
-
-Claude 参与了前端的设计与美化。
-
 ### 团队
 
 璞玉计划项目小组
@@ -524,10 +520,6 @@ Backend tests cover authentication and data isolation, timetable and import, tas
 | v2.0 | ✅ Done | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
 | v3.0 | ✅ Done | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
 | v4.0 | ✅ Done | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
-
-### AI contribution
-
-Claude contributed to the design and visual polish of the frontend.
 
 ### Team
 
