@@ -125,6 +125,8 @@
 
 ### 版本迭代
 
+> 以下 v1.0 至 v4.0 均为内部测试版本，用于开发过程中的功能迭代与验证。
+
 **v1.0 · 基础模块**
 - 后端 FastAPI 框架与 SQLite 数据库设计
 - 教务 Excel 课表解析、PDF 章节提取与导入接口
@@ -278,10 +280,10 @@ cd e2e && npm install && npm test                # 端到端测试，使用本�
 
 | 版本 | 状态 | 内容 |
 |---|---|---|
-| v1.0 | ✅ 已完成 | 基础模块：后端框架、课表解析、任务与计划接口、DeepSeek 接入、前端框架 |
-| v2.0 | ✅ 已完成 | 系统重构：统一协议与鉴权、课表周次、任务体系、专注计时、成长激励、空闲时段排程 |
-| v3.0 | ✅ 已完成 | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
-| v4.0 | ✅ 已完成 | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
+| v1.0 | ✅ 已完成（内部测试） | 基础模块：后端框架、课表解析、任务与计划接口、DeepSeek 接入、前端框架 |
+| v2.0 | ✅ 已完成（内部测试） | 系统重构：统一协议与鉴权、课表周次、任务体系、专注计时、成长激励、空闲时段排程 |
+| v3.0 | ✅ 已完成（内部测试） | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
+| v4.0 | ✅ 已完成（内部测试） | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
 
 ### 团队
 
@@ -374,6 +376,8 @@ Students typically switch between several apps, re-enter the same information an
 See the [Chinese section](#功能截图) above for desktop and mobile screenshots.
 
 ### Release history
+
+> Versions v1.0 to v4.0 below are internal test builds, used to iterate on and verify features during development.
 
 **v1.0 · Foundations**
 - FastAPI backend and SQLite schema
@@ -516,10 +520,10 @@ Backend tests cover authentication and data isolation, timetable and import, tas
 
 | Version | Status | Scope |
 |---|---|---|
-| v1.0 | ✅ Done | Foundations: backend framework, timetable parsing, task and plan APIs, DeepSeek integration, frontend skeleton |
-| v2.0 | ✅ Done | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
-| v3.0 | ✅ Done | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
-| v4.0 | ✅ Done | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
+| v1.0 | ✅ Done (internal test) | Foundations: backend framework, timetable parsing, task and plan APIs, DeepSeek integration, frontend skeleton |
+| v2.0 | ✅ Done (internal test) | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
+| v3.0 | ✅ Done (internal test) | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
+| v4.0 | ✅ Done (internal test) | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
 
 ### Team
 
