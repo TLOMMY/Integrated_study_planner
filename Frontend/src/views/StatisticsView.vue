@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onActivated, onMounted, ref } from 'vue
 import { Icon } from '@iconify/vue'
 import dayjs from 'dayjs'
 import Heatmap from '@/components/stats/Heatmap.vue'
+import CheckinRule from '@/components/stats/CheckinRule.vue'
 import Leaderboard from '@/components/stats/Leaderboard.vue'
 import ProgressRing from '@/components/common/ProgressRing.vue'
 import { themeColor } from '@/composables/useTheme'
@@ -157,7 +158,7 @@ onActivated(() => stats.data && load())
         <div class="card flex flex-col items-center justify-center p-3 text-center">
           <Icon icon="lucide:flame" width="26" class="text-flame" :class="d.streak.active_today && 'animate-flicker'" />
           <p class="num mt-1 text-xl font-black text-ink">{{ d.streak.current }}</p>
-          <p class="text-[10px] font-bold text-ink-mute">连续天数</p>
+          <p class="flex items-center text-[10px] font-bold text-ink-mute">连续天数<CheckinRule :streak="d.streak" align="left" /></p>
         </div>
         <div class="card flex flex-col items-center justify-center p-3 text-center">
           <ProgressRing :value="d.daily_goal.progress" :size="42" :stroke="5" color="rgb(var(--c-success))" track="rgb(var(--c-ink-line))">
@@ -175,9 +176,10 @@ onActivated(() => stats.data && load())
       <!-- 本周打卡 -->
       <section class="card mt-3 p-4 lg:mt-0 lg:order-3">
         <div class="flex items-center justify-between">
-          <h2 class="section-title">本周打卡</h2>
+          <h2 class="section-title flex items-center gap-1">本周打卡<CheckinRule :streak="d.streak" show-status align="left" /></h2>
           <span class="text-xs font-semibold text-ink-mute">最长连续 {{ d.streak.longest }} 天</span>
         </div>
+        <p class="mt-1 text-[11px] text-ink-mute">{{ d.streak.rule?.text || '当天专注满 5 分钟或完成 1 个任务即算打卡' }}</p>
         <div class="mt-3 grid grid-cols-7 gap-1.5">
           <div v-for="day in d.streak.week" :key="day.date" class="flex flex-col items-center gap-1">
             <span
@@ -191,7 +193,7 @@ onActivated(() => stats.data && load())
           </div>
         </div>
         <p v-if="d.streak.at_risk" class="mt-3 rounded-2xl bg-flame-light px-3 py-2 text-xs font-semibold text-flame">
-          <template v-if="protectedRecently">已用保护卡保住连续记录，</template>今天还没打卡，完成一次专注或任务就能保住 {{ d.streak.current }} 天的连续记录
+          <template v-if="protectedRecently">已用保护卡保住连续记录，</template>今天还没打卡，再专注 {{ d.streak.today?.focus_needed ?? 5 }} 分钟或完成 1 个任务就能保住 {{ d.streak.current }} 天的连续记录
         </p>
         <p v-else-if="protectedRecently" class="mt-3 rounded-2xl bg-primary-light px-3 py-2 text-xs font-semibold text-primary">已用保护卡保住连续记录，继续保持</p>
 

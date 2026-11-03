@@ -6,7 +6,10 @@ import MarkdownText from './MarkdownText.vue'
 import TaskProposalCard from './TaskProposalCard.vue'
 import CourseProposalCard from './CourseProposalCard.vue'
 import ChangeProposalCard from './ChangeProposalCard.vue'
+import DeleteProposalCard from './DeleteProposalCard.vue'
+import AiBadge from './AiBadge.vue'
 import { useAiStore } from '@/stores/ai'
+import { friendlyLabel } from '@/utils/aiModels'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -44,6 +47,8 @@ const engineNote = computed(() => {
   if (meta.value.engine === 'draft') return '简化规划模式'
   return ''
 })
+// 大模型生成的回复（智能体 / 简化规划模式）显示"AI 生成"；本地规则引擎的模板回复不标
+const aiGenerated = computed(() => meta.value.engine === 'agent' || (meta.value.engine === 'draft' && meta.value.model && meta.value.model !== '本地规则引擎'))
 const toolIcon = (t) => (t.status === 'running' ? 'lucide:loader-circle' : t.summary?.startsWith('失败') ? 'lucide:circle-x' : 'lucide:check')
 </script>
 
@@ -77,7 +82,11 @@ const toolIcon = (t) => (t.status === 'running' ? 'lucide:loader-circle' : t.sum
           <span class="ml-2 text-xs text-ink-mute">{{ message.status || '正在思考…' }}</span>
         </span>
         <span v-if="message.live && content" class="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-primary align-middle" />
-        <p v-if="engineNote && !message.live" class="mt-2 text-[10px] font-semibold text-ink-mute">{{ engineNote }}<template v-if="meta.model"> · {{ meta.model }}</template></p>
+        <p v-if="engineNote && !message.live" class="mt-2 flex items-center gap-1 text-[10px] font-semibold text-ink-mute">
+          <span>{{ engineNote }}<template v-if="meta.model"> · {{ friendlyLabel(meta.model) }}</template></span>
+          <RouterLink v-if="meta.engine === 'rule'" :to="{ name: 'manual', hash: '#rule-templates' }" class="inline-flex h-5 w-5 items-center justify-center rounded-full text-ink-mute hover:bg-background hover:text-primary" aria-label="本地规则引擎能听懂哪些写法" title="本地规则引擎能听懂哪些写法"><Icon icon="lucide:circle-help" width="13" /></RouterLink>
+        </p>
+        <p v-if="aiGenerated && content && !message.live" class="mt-2 flex items-center gap-1.5 text-[10px] text-ink-mute"><AiBadge :title="friendlyLabel(meta.model)" /><span class="truncate">{{ friendlyLabel(meta.model) }}</span></p>
       </div>
       <p v-if="meta.notice" class="rounded-xl bg-flame-light px-3 py-1.5 text-[11px] font-semibold text-flame">{{ meta.notice }}</p>
       <p v-if="meta.error" class="rounded-xl bg-danger-light px-3 py-1.5 text-[11px] font-semibold text-danger">{{ meta.error }}</p>
@@ -104,6 +113,7 @@ const toolIcon = (t) => (t.status === 'running' ? 'lucide:loader-circle' : t.sum
         <TaskProposalCard v-if="p.type === 'tasks'" :message="message" :proposal="p" />
         <CourseProposalCard v-else-if="p.type === 'courses'" :message="message" :proposal="p" />
         <ChangeProposalCard v-else-if="p.type === 'changes'" :message="message" :proposal="p" />
+        <DeleteProposalCard v-else-if="p.type === 'deletes'" :message="message" :proposal="p" />
       </template>
     </div>
   </div>

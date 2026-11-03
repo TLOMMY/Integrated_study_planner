@@ -5,8 +5,11 @@ from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.core.errors import ApiError, ok
 from app.core.security import hash_password, token_payload, verify_password
-from app.models import AiProvider, FocusRecord, ImportLog, StudyPlan, StudyTask, Timetable, User, UserAchievement, XpEvent
-from app.schemas import EmailChangeIn, PasswordConfirmIn, PasswordIn, PhoneChangeIn, StudyPrefsIn, UserUpdateIn, VerifyEmailIn
+from app.models import (
+    AiProvider, FocusRecord, ImportLog, StudyPlan, StudyTask, Timetable, TimetableSet, User, UserAchievement, XpEvent,
+)
+from app.schemas import (EmailChangeIn, OnboardingIn, PasswordConfirmIn, PasswordIn, PhoneChangeIn, StudyPrefsIn,
+                         UserUpdateIn, VerifyEmailIn)
 from app.services import prefs
 from app.services.accounts import user_to_dict, verify_email_code
 
@@ -106,6 +109,18 @@ def logout_all(user: CurrentUser, db: DB):
     return ok(token_payload(user), "已退出其他所有设备")
 
 
+@router.put("/me/onboarding", summary="标记新手教程已看完 / 重置")
+def set_onboarding(payload: OnboardingIn, user: CurrentUser, db: DB):
+    from app.core.timeutil import now
+
+    # 演示账号是大家共用的，不记录（user_to_dict 里始终视为已看过）
+    if not user.is_demo:
+        user.onboarded_at = now() if payload.done else None
+        db.commit()
+        db.refresh(user)
+    return ok(user_to_dict(user), "已完成新手教程" if payload.done else "下次登录会再次显示新手教程")
+
+
 @router.get("/me/study-prefs", summary="学习时段偏好 + 专注习惯统计（AI 排程会读取）")
 def get_study_prefs(user: CurrentUser, db: DB):
     return ok(prefs.to_dict(db, user))
@@ -131,6 +146,7 @@ def export_data(user: CurrentUser, db: DB):
     return ok({
         "user": {**user_to_dict(user), "study_prefs": prefs.load(user)},
         "timetables": rows(Timetable, Timetable.id),
+        "timetable_sets": rows(TimetableSet, TimetableSet.id),
         "study_plans": rows(StudyPlan, StudyPlan.id),
         "study_tasks": rows(StudyTask, StudyTask.id),
         "focus_records": rows(FocusRecord, FocusRecord.id),
@@ -145,7 +161,7 @@ def export_data(user: CurrentUser, db: DB):
 def delete_account(payload: PasswordConfirmIn, user: CurrentUser, db: DB):
     _no_demo(user, "注销")
     _check_password(user, payload.password)
-    for model in (FocusRecord, StudyTask, StudyPlan, Timetable, XpEvent, UserAchievement, AiProvider, ImportLog):
+    for model in (FocusRecord, StudyTask, StudyPlan, Timetable, TimetableSet, XpEvent, UserAchievement, AiProvider, ImportLog):
         db.query(model).filter(model.user_id == user.id).delete(synchronize_session=False)
     db.delete(user)
     db.commit()

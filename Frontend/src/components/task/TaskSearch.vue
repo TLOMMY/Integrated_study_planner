@@ -56,7 +56,7 @@ defineExpose({ refresh, clear })
         <input
           v-model="q"
           class="min-w-0 flex-1 bg-transparent py-3 text-sm outline-none placeholder:text-ink-mute"
-          placeholder="搜索任务：标题、科目、备注"
+          placeholder="搜索任务：标题、科目、备注（支持简称，如 高数）"
           maxlength="50"
           enterkeyhint="search"
           aria-label="搜索任务"
@@ -67,7 +67,7 @@ defineExpose({ refresh, clear })
           <Icon icon="lucide:x" width="14" />
         </button>
       </label>
-      <button class="btn-primary shrink-0 px-4 py-3 text-sm lg:px-5" type="button" aria-label="添加任务" @click="emit('add')">
+      <button class="btn-primary shrink-0 px-4 py-3 text-sm lg:px-5" type="button" aria-label="添加任务" data-tour="task-add" @click="emit('add')">
         <Icon icon="lucide:plus" width="18" />添加任务
       </button>
     </div>

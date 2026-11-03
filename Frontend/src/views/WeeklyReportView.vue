@@ -4,11 +4,13 @@ import { useRoute, useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import MarkdownText from '@/components/ai/MarkdownText.vue'
+import AiBadge from '@/components/ai/AiBadge.vue'
+import { friendlyLabel } from '@/utils/aiModels'
 import { growthApi } from '@/api/growth'
 import { themeColor } from '@/composables/useTheme'
 import { formatMinutes, mondayOf } from '@/utils/dates'
 
-/** 每周学习报告：统计（/study/weekly-report）+ AI 复盘（/ai/review/weekly，代理 F） */
+/** 每周学习报告：统计（/study/weekly-report）+ AI 复盘（/ai/review/weekly） */
 const EChart = defineAsyncComponent(() => import('@/components/stats/EChart.vue'))
 const route = useRoute()
 const router = useRouter()
@@ -163,7 +165,7 @@ const subjectOption = computed(() => ({
         <!-- AI 复盘 -->
         <section class="card mt-3 p-4 lg:col-span-2 lg:mt-0">
           <div class="mb-2 flex items-center justify-between">
-            <h2 class="section-title flex items-center gap-1.5"><Icon icon="lucide:sparkles" width="16" class="text-xp" />AI 复盘</h2>
+            <h2 class="section-title flex items-center gap-1.5"><Icon icon="lucide:sparkles" width="16" class="text-xp" />AI 复盘<AiBadge v-if="aiState === 'ready' && ai?.provider !== 'rule'" :title="friendlyLabel(ai?.model)" /></h2>
             <button v-if="aiState === 'unavailable' || aiState === 'ready'" class="text-xs font-bold text-primary" type="button" @click="loadAi(aiState === 'ready')">{{ aiState === 'ready' ? '重新生成' : '重试' }}</button>
           </div>
           <div v-if="aiState === 'loading'" class="space-y-2"><div class="skeleton h-4 w-3/4" /><div class="skeleton h-4" /><div class="skeleton h-4 w-5/6" /></div>
@@ -174,7 +176,7 @@ const subjectOption = computed(() => ({
                 <Icon icon="lucide:lightbulb" width="14" class="mt-0.5 shrink-0 text-xp" />{{ typeof s === 'string' ? s : s.text || s.title }}
               </li>
             </ul>
-            <p v-if="ai.model || ai.provider" class="mt-2 text-[10px] text-ink-mute">由 {{ ai.model || ai.provider }} 生成{{ ai.generated_at ? ` · ${dayjs(ai.generated_at).format('M/D HH:mm')}` : '' }}</p>
+            <p v-if="ai.model || ai.provider" class="mt-2 text-[10px] text-ink-mute">由 {{ friendlyLabel(ai.model || ai.provider) }} 生成{{ ai.generated_at ? ` · ${dayjs(ai.generated_at).format('M/D HH:mm')}` : '' }}</p>
           </template>
           <p v-else-if="aiState === 'unavailable'" class="rounded-2xl bg-background px-3 py-3 text-xs text-ink-mute">AI 复盘暂不可用{{ aiError ? `：${aiError}` : '' }}，下方的统计不受影响。</p>
           <p v-else class="rounded-2xl bg-background px-3 py-3 text-xs text-ink-mute">这周还没有学习记录，学一会儿再来看 AI 复盘吧。</p>

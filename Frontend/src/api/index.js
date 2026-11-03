@@ -67,25 +67,36 @@ export const timetableApi = {
   update: (id, payload) => http.put(`/timetable/${id}`, payload),
   remove: (id) => http.delete(`/timetable/${id}`),
   saveSettings: (payload) => http.put('/timetable/settings', payload),
-  importFile: (file, mode = 'preview', selected = null) => {
+  // 多套课表：返回值都是切换 / 修改后的完整课表（含 sets）
+  sets: () => http.get('/timetable/sets'),
+  createSet: (payload) => http.post('/timetable/sets', payload),
+  renameSet: (id, name) => http.put(`/timetable/sets/${id}`, { name }),
+  activateSet: (id) => http.post(`/timetable/sets/${id}/activate`),
+  removeSet: (id) => http.delete(`/timetable/sets/${id}`),
+  // target：{ target: 'current' | 'new', setName }，导入到当前课表或新建一套
+  importFile: (file, mode = 'preview', selected = null, target = null) => {
     const form = new FormData()
     form.append('file', file)
     if (selected) form.append('selected', selected.join(','))
+    if (target?.target) form.append('target', target.target)
+    if (target?.setName) form.append('set_name', target.setName)
     return http.post('/import/timetable', form, { params: { mode, replace: true }, timeout: 30000 })
   },
   // 教务网页：保存的 .html/.mhtml，或把粘贴的源代码包装成文件上传（避开表单字段 1MB 限制）
-  importWeb: (file, mode = 'preview', selected = null) => {
+  importWeb: (file, mode = 'preview', selected = null, target = null) => {
     const form = new FormData()
     form.append('file', file)
     if (selected) form.append('selected', selected.join(','))
+    if (target?.target) form.append('target', target.target)
+    if (target?.setName) form.append('set_name', target.setName)
     return http.post('/import/timetable/web', form, { params: { mode, replace: true }, timeout: 30000 })
   },
-  // 图片 / PDF 交给大模型识别，只返回预览；视觉模型较慢，超时放宽到 90 秒
-  recognize: (file, providerId = null) => {
+  // 图片 / PDF 交给大模型识别，只返回预览；后端模型超时 110 秒，这里放宽到 150 秒（含上传与 PDF 处理）
+  recognize: (file, providerId = null, onUploadProgress = null) => {
     const form = new FormData()
     form.append('file', file)
     if (providerId) form.append('provider_id', providerId)
-    return http.post('/import/timetable/ai', form, { timeout: 90000 })
+    return http.post('/import/timetable/ai', form, { timeout: 150000, onUploadProgress })
   },
   // 提交预览里勾选的课程（AI 识别结果），服务器重新校验后写入，不会再次调用模型
   commitCourses: (payload) => http.post('/import/timetable/commit', payload),
@@ -121,6 +132,8 @@ export const aiApi = {
   activate: (active) => http.put('/ai/settings', { active }),
   // 当前使用的模型的思考强度：off / high / max
   setThinking: (thinking) => http.put('/ai/settings', { thinking }),
+  // 服务器 DeepSeek 下选用的模型：deepseek-flash / deepseek-v4-pro
+  setEnvModel: (envModel) => http.put('/ai/settings', { env_model: envModel }),
   createProvider: (payload) => http.post('/ai/providers', payload),
   updateProvider: (id, payload) => http.put(`/ai/providers/${id}`, payload),
   removeProvider: (id) => http.delete(`/ai/providers/${id}`),

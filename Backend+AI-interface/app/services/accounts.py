@@ -32,11 +32,13 @@ def user_to_dict(user: User) -> dict:
         "is_admin": bool(user.is_admin) or (user.email or "").lower() in settings.ADMIN_EMAILS,
         "email_verified": bool(user.email_verified),
         "theme": user.theme or "default",
+        # 是否已看过新手教程（演示账号视为已看过，不自动弹出）
+        "onboarded": bool(user.onboarded_at) or bool(user.is_demo),
         "created_at": user.created_at.isoformat() if user.created_at else None,
     }
 
 
-# ---------------------------------------------------------------- v4 · B：邮箱验证码
+# ---------------------------------------------------------------- 邮箱验证码
 CODE_TTL = timedelta(minutes=10)
 CODE_COOLDOWN = timedelta(seconds=60)
 CODE_MAX_ATTEMPTS = 5

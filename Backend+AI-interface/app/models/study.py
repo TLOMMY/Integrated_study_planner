@@ -51,7 +51,7 @@ class StudyTask(Base):
     end_time = Column(DateTime, nullable=True)
     duration_minutes = Column(Integer, default=60)
 
-    # 0 无 / 1 低 / 2 中 / 3 高，对应滴答清单的四级优先级
+    # 四级优先级：0 无 / 1 低 / 2 中 / 3 高
     priority = Column(Integer, default=0)
     # none / daily / weekdays / weekly
     repeat_rule = Column(String(20), default="none")
@@ -104,6 +104,28 @@ class Timetable(Base):
     semester = Column(String(40), default="2025-2026-1")
     color = Column(String(20), default="#4F6EF7")
     note = Column(String(200), nullable=True)
+    # 所属的那套课表（TimetableSet.id）；只显示当前生效那套的课程
+    set_id = Column(Integer, ForeignKey("timetable_sets.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=now)
+
+
+class TimetableSet(Base):
+    """
+    多套课表（如"大二上""辅修"）。同一用户同时只有一套 is_active=True。
+    生效那套的学期设置以 User 上的 semester / semester_start / total_weeks / period_times 为准
+    （沿用旧字段，其余代码不用改）；切换时把旧那套的设置存回这里，再把新那套的设置写回 User。
+    """
+
+    __tablename__ = "timetable_sets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String(40), nullable=False)
+    semester = Column(String(40), nullable=True)
+    semester_start = Column(String(10), nullable=True)
+    total_weeks = Column(Integer, default=20)
+    period_times = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=False)
     created_at = Column(DateTime, default=now)
 
 

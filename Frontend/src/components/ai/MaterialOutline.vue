@@ -11,6 +11,8 @@ import { Icon } from '@iconify/vue'
 import { insightApi } from '@/api/insight'
 import { useUiStore } from '@/stores/ui'
 import { formatMinutes } from '@/utils/dates'
+import { friendlyLabel } from '@/utils/aiModels'
+import AiBadge from './AiBadge.vue'
 
 defineProps({ compact: { type: Boolean, default: false } })
 const emit = defineEmits(['plan'])
@@ -178,9 +180,7 @@ defineExpose({ choose, reset })
             · {{ outline.provider === 'llm' ? 'AI 已整理' : SOURCE_LABELS[outline.source] || '规则提取' }}
           </p>
         </div>
-        <span v-if="outline.provider === 'llm'" class="flex shrink-0 items-center gap-0.5 rounded-full bg-xp-light px-2 py-0.5 text-[10px] font-bold text-xp">
-          <Icon icon="lucide:sparkles" width="10" />AI
-        </span>
+        <AiBadge v-if="outline.provider === 'llm'" :title="friendlyLabel(outline.model)" />
       </div>
       <p v-if="outline.fallback_reason" class="mb-3 text-[11px] text-ink-mute">{{ outline.fallback_reason }}</p>
 

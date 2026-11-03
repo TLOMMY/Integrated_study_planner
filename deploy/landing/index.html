@@ -1,0 +1,202 @@
+<!doctype html>
+<!--
+  学业管家 · 介绍与下载页（静态单页，无外部依赖）。
+  由 deploy/install.sh 复制到 /opt/xueyeguanjia/site/，并把下列占位符（前后各两个下划线）替换为实际值：
+    APP_URL        网页版地址（如 https://app.xueyeguanjia.com 或 http://公网IP）
+    DOWNLOAD_URL   下载地址（默认 GitHub Releases）
+    ICP_NUMBER     ICP 备案号（可空）
+    POLICE_BEIAN   公安备案号（可空）
+    POLICE_CODE    公安备案号中的数字（用于查询链接，可空）
+  截图来自仓库 docs/screenshots，安装时复制到 site/screenshots/。占位符未替换或为空时，备案链接自动隐藏。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>学业管家 · 课表、待办、专注与成长，一个 App 管好大学学习</title>
+<meta name="description" content="学业管家：导入课表、安排任务、番茄钟专注、打卡成长，AI 助手按你的空闲时段排复习计划。支持网页版、Windows 与安卓。" />
+<link rel="icon" href="__APP_URL__/favicon.svg" type="image/svg+xml" />
+<style>
+  :root {
+    --primary: #4f6ef7; --primary-dark: #3b57e0; --primary-light: #eef1fe; --xp: #8b5cf6; --flame: #ff8a00;
+    --success: #10b981; --ink: #0f172a; --ink-soft: #475569; --ink-mute: #94a3b8; --line: #e2e8f0;
+    --bg: #f5f7fb; --surface: #fff;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; }
+  a { color: inherit; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .nav { position: sticky; top: 0; z-index: 10; background: rgba(245, 247, 251, .88); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(226, 232, 240, .7); padding-top: env(safe-area-inset-top, 0px); }
+  .nav .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; text-decoration: none; }
+  .brand i { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-style: normal; background: linear-gradient(135deg, var(--primary), var(--xp)); }
+  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; font-weight: 700; color: var(--ink-soft); }
+  .nav nav a { text-decoration: none; }
+  .nav nav a:hover { color: var(--primary); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; padding: 13px 22px; font-weight: 900; font-size: 15px; text-decoration: none; transition: transform .15s, box-shadow .15s, background .15s; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: #fff; color: var(--primary-dark); box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
+  .btn-primary:hover { box-shadow: 0 14px 36px rgba(15, 23, 42, .24); }
+  .btn-ghost { background: rgba(255, 255, 255, .16); color: #fff; border: 1.5px solid rgba(255, 255, 255, .45); }
+  .btn-ghost:hover { background: rgba(255, 255, 255, .26); }
+  .btn-solid { background: var(--primary); color: #fff; }
+  .btn-solid:hover { background: var(--primary-dark); }
+  .btn-outline { background: var(--surface); color: var(--primary-dark); border: 1.5px solid var(--line); }
+  .btn-outline:hover { border-color: var(--primary); }
+  .hero { background: linear-gradient(135deg, var(--primary) 0%, #6366f1 50%, var(--xp) 100%); color: #fff; overflow: hidden; }
+  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding-top: 72px; padding-bottom: 72px; }
+  .hero h1 { margin: 0; font-size: 42px; line-height: 1.2; font-weight: 900; letter-spacing: .5px; }
+  .hero h1 span { display: inline-block; }
+  .hero p.lead { margin: 18px 0 0; font-size: 18px; opacity: .92; max-width: 520px; }
+  .hero .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
+  .hero .meta { margin-top: 18px; font-size: 13px; opacity: .8; }
+  .shot-hero { position: relative; }
+  .shot-hero .desk { border-radius: 18px; box-shadow: 0 30px 70px rgba(15, 23, 42, .35); border: 6px solid rgba(255, 255, 255, .25); }
+  .shot-hero .phone { position: absolute; right: -10px; bottom: -36px; width: 30%; border-radius: 22px; border: 5px solid #fff; box-shadow: 0 20px 50px rgba(15, 23, 42, .35); }
+  section.block { padding: 72px 0; }
+  .eyebrow { color: var(--primary); font-weight: 900; font-size: 13px; letter-spacing: 2px; }
+  h2 { margin: 6px 0 0; font-size: 32px; font-weight: 900; }
+  .sub { margin: 10px 0 0; color: var(--ink-soft); font-size: 16px; max-width: 640px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 32px; }
+  .card { background: var(--surface); border-radius: 24px; padding: 22px; box-shadow: 0 2px 10px rgba(15, 23, 42, .05); border: 1px solid rgba(226, 232, 240, .7); }
+  .card .ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; }
+  .card h3 { margin: 14px 0 6px; font-size: 17px; font-weight: 900; }
+  .card p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+  .c1 { background: var(--primary-light); } .c2 { background: #ecfdf5; } .c3 { background: #fff4e5; } .c4 { background: #f3eeff; } .c5 { background: #fef2f2; } .c6 { background: #eef6ff; }
+  .gallery { margin-top: 32px; display: grid; grid-template-columns: 2fr 1fr; gap: 18px; align-items: start; }
+  .gallery figure { margin: 0; }
+  .gallery img { border-radius: 18px; box-shadow: 0 12px 34px rgba(15, 23, 42, .12); border: 1px solid var(--line); background: #fff; }
+  .gallery figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-mute); text-align: center; }
+  .phones { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .strip { margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .dl { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .dl .card { display: flex; flex-direction: column; }
+  .dl .card p { flex: 1; }
+  .dl .card .btn { margin-top: 16px; }
+  .note { margin-top: 18px; font-size: 13px; color: var(--ink-mute); }
+  footer { border-top: 1px solid var(--line); padding: 28px 0 calc(28px + env(safe-area-inset-bottom, 0px)); color: var(--ink-mute); font-size: 13px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+  footer a { text-decoration: none; }
+  footer a:hover { color: var(--primary); }
+  footer .beian { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
+  @media (max-width: 900px) {
+    .hero .wrap { grid-template-columns: 1fr; padding-top: 44px; padding-bottom: 64px; }
+    .hero h1 { font-size: 36px; }
+    .grid, .dl { grid-template-columns: 1fr 1fr; }
+    .gallery { grid-template-columns: 1fr; }
+    .strip { grid-template-columns: repeat(2, 1fr); }
+    .nav nav a.opt { display: none; }
+  }
+  @media (max-width: 560px) {
+    .grid, .dl { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 30px; }
+    h2 { font-size: 26px; }
+    .shot-hero .phone { display: none; }
+    footer .beian { margin-left: 0; }
+  }
+</style>
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top"><i>🦉</i>学业管家</a>
+    <nav aria-label="页面导航">
+      <a class="opt" href="#features">功能</a>
+      <a class="opt" href="#screens">截图</a>
+      <a href="#download">下载</a>
+      <a href="__APP_URL__/">网页版</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <h1><span>课表、待办、</span><span>专注与成长</span><br /><span>一个 App</span> <span>管好大学学习</span></h1>
+        <p class="lead">以课表为核心，把课程、任务、专注和成长放在同一个应用里：导入课表、安排任务、番茄钟专注、连续打卡升级，AI 助手会避开你的课，按空闲时段排复习计划。</p>
+        <div class="cta">
+          <a class="btn btn-primary" href="__APP_URL__/">打开网页版 →</a>
+          <a class="btn btn-ghost" href="#download">下载 Windows / 安卓</a>
+        </div>
+        <p class="meta">免费 · 无广告 · 支持一键体验演示账号</p>
+      </div>
+      <div class="shot-hero">
+        <img class="desk" src="screenshots/desktop-home.png" alt="学业管家电脑端首页：今日任务、课程与专注概览" width="1440" height="900" />
+        <img class="phone" src="screenshots/mobile-home.png" alt="学业管家手机端首页" width="390" height="844" loading="lazy" />
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="features">
+    <div class="wrap">
+      <p class="eyebrow">主要功能</p>
+      <h2>从开学导入课表，到期末复习冲刺</h2>
+      <p class="sub">手机优先设计，电脑上同样好用；数据在网页、Windows 与安卓之间自动同步。</p>
+      <div class="grid">
+        <article class="card"><div class="ic c1">📅</div><h3>课表</h3><p>Excel / 教务网页 / 截图与 PDF（AI 识别）三种导入方式，单双周、节次时间、多套课表、课表分享码与导出图片。</p></article>
+        <article class="card"><div class="ic c2">✅</div><h3>任务与日程</h3><p>快速添加、子任务、标签与清单、提醒时间；日 / 周 / 月视图，电脑端拖拽改期，自动避开上课时间。</p></article>
+        <article class="card"><div class="ic c3">⏱️</div><h3>专注</h3><p>番茄钟、白噪音与自己的歌单、防切出提醒；专注状态跨设备同步，按科目统计学习时长。</p></article>
+        <article class="card"><div class="ic c4">🔥</div><h3>成长</h3><p>连续打卡、经验与等级、成就徽章、学习热力图、断签保护卡、学习小组排行榜与每周学习报告。</p></article>
+        <article class="card"><div class="ic c5">✨</div><h3>AI 助手</h3><p>对话式规划：先看课表和空闲时段再排任务，可推荐 B 站课程、按讲义章节排复习；所有改动先出卡片，确认后才导入。</p></article>
+        <article class="card"><div class="ic c6">🎨</div><h3>多主题与离线</h3><p>默认、深色与多款玻璃主题；断网时仍可查看课表和任务。也可以接入自己的大模型 Key 或使用本地规则引擎。</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="screens" style="background: var(--surface)">
+    <div class="wrap">
+      <p class="eyebrow">截图</p>
+      <h2>看看它长什么样</h2>
+      <div class="gallery">
+        <figure><img src="screenshots/desktop-week.png" alt="电脑端周视图：课程与任务排在同一张日程表里" width="1440" height="900" loading="lazy" /><figcaption>周视图：课程与任务一目了然</figcaption></figure>
+        <div class="phones">
+          <figure><img src="screenshots/mobile-timetable.png" alt="手机端课表" width="390" height="844" loading="lazy" /><figcaption>课表</figcaption></figure>
+          <figure><img src="screenshots/mobile-focus.png" alt="手机端专注计时" width="390" height="844" loading="lazy" /><figcaption>专注</figcaption></figure>
+        </div>
+      </div>
+      <div class="strip">
+        <figure style="margin:0"><img src="screenshots/desktop-ai.png" alt="AI 助手对话与任务提案卡片" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
+        <figure style="margin:0"><img src="screenshots/desktop-stats.png" alt="成长页：热力图、等级与成就" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
+        <figure style="margin:0"><img src="screenshots/desktop-import.png" alt="课表导入：三种方式" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
+        <figure style="margin:0"><img src="screenshots/theme-night-indigo.png" alt="夜读靛主题" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="download">
+    <div class="wrap">
+      <p class="eyebrow">下载</p>
+      <h2>选一个你顺手的方式</h2>
+      <div class="dl">
+        <article class="card"><div class="ic c1">🌐</div><h3>网页版</h3><p>无需安装，浏览器打开即用；手机浏览器里可"添加到主屏幕"。</p><a class="btn btn-solid" href="__APP_URL__/">打开网页版</a></article>
+        <article class="card"><div class="ic c4">🖥️</div><h3>Windows</h3><p>安装版或便携版（Windows 10 / 11），开机即可查看今日安排。</p><a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a></article>
+        <article class="card"><div class="ic c2">🤖</div><h3>安卓</h3><p>APK 安装包（Android 8 及以上），支持课前与任务本地提醒。</p><a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a></article>
+      </div>
+      <p class="note">安装包发布在 GitHub Releases，未做应用商店上架与代码签名，安装时系统可能提示"未知来源"，请从本页链接下载。</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 学业管家 · 个人非经营性学生项目</span>
+    <a href="__APP_URL__/terms">用户协议</a>
+    <a href="__APP_URL__/privacy">隐私政策</a>
+    <span class="beian">
+      <a data-beian href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">__ICP_NUMBER__</a>
+      <a data-beian href="https://beian.mps.gov.cn/#/query/webSearch?code=__POLICE_CODE__" target="_blank" rel="noopener noreferrer">__POLICE_BEIAN__</a>
+    </span>
+  </div>
+</footer>
+<script>
+  // 备案号为空（或占位符未被替换）时隐藏对应链接
+  document.querySelectorAll('[data-beian]').forEach(function (a) {
+    var text = (a.textContent || '').trim();
+    if (!text || text.indexOf('__') === 0) a.remove();
+  });
+</script>
+</body>
+</html>

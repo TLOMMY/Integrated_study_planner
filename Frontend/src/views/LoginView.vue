@@ -6,6 +6,9 @@ import { authApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { DEFAULT_SERVER, getServer, isNativeApp, probeServer, setServer } from '@/api/server'
+import BeianFooter from '@/components/common/BeianFooter.vue'
+import { siteApi } from '@/api/site'
+import { DEFAULT_SITE, loadSiteInfo } from '@/utils/site'
 
 const auth = useAuthStore()
 const ui = useUiStore()
@@ -24,6 +27,12 @@ const requireCode = ref(false)
 const codeHint = ref('')
 const cooldown = ref(0)
 let codeTimer = null
+// 注册须勾选同意用户协议与隐私政策；页面底部显示备案号
+const agreed = ref(false)
+const site = ref({ ...DEFAULT_SITE })
+onMounted(async () => {
+  site.value = await loadSiteInfo(siteApi.info)
+})
 onMounted(async () => {
   try {
     requireCode.value = Boolean((await authApi.options()).require_email_verify)
@@ -89,10 +98,16 @@ const submit = async () => {
   if (!isLogin.value && !/^\S+@\S+\.\S+$/.test(form.account.trim())) return (error.value = '邮箱格式不正确')
   if (form.password.length < (isLogin.value ? 1 : 6)) return (error.value = isLogin.value ? '请输入密码' : '密码至少 6 位')
   if (!isLogin.value && requireCode.value && !/^\d{6}$/.test(form.code.trim())) return (error.value = '请输入邮箱收到的 6 位验证码')
+  if (!isLogin.value && !agreed.value) return (error.value = '请先阅读并勾选同意《用户协议》和《隐私政策》')
   busy.value = true
   try {
     if (isLogin.value) await auth.login(form.account.trim(), form.password)
-    else await auth.register({ email: form.account.trim(), password: form.password, full_name: form.name.trim(), ...(form.code.trim() ? { code: form.code.trim() } : {}) })
+    else await auth.register({
+      email: form.account.trim(), password: form.password, full_name: form.name.trim(),
+      ...(form.code.trim() ? { code: form.code.trim() } : {}),
+      // 记录同意的条款版本（旧服务器忽略该字段）
+      ...(site.value.terms_version ? { agreed_terms_version: site.value.terms_version } : {}),
+    })
     done()
   } catch (e) {
     error.value = e.message
@@ -153,6 +168,10 @@ const demo = async () => {
           </div>
           <p v-if="codeHint" class="px-1 text-[11px] text-ink-mute">{{ codeHint }}</p>
         </template>
+        <label v-if="!isLogin" class="flex cursor-pointer items-start gap-2 px-1 text-[12px] leading-5 text-ink-soft">
+          <input v-model="agreed" type="checkbox" class="mt-[3px] h-4 w-4 shrink-0 accent-primary" aria-label="同意用户协议和隐私政策" />
+          <span>我已阅读并同意<RouterLink class="font-bold text-primary" :to="{ name: 'terms' }">《用户协议》</RouterLink>和<RouterLink class="font-bold text-primary" :to="{ name: 'privacy' }">《隐私政策》</RouterLink>，知悉 AI 功能会把相关内容发送给模型服务商处理</span>
+        </label>
         <div v-if="isLogin" class="-mt-1 flex justify-end">
           <RouterLink class="px-1 text-xs font-bold text-primary" :to="{ name: 'forgot', query: form.account.includes('@') ? { email: form.account.trim() } : {} }">忘记密码？</RouterLink>
         </div>
@@ -188,6 +207,16 @@ const demo = async () => {
           </div>
         </div>
       </div>
+
+      <!-- 协议链接与备案号（备案号为空时不显示） -->
+      <footer class="mt-6 space-y-1.5">
+        <p class="flex items-center justify-center gap-3 text-[11px] text-ink-mute">
+          <RouterLink class="hover:text-primary" :to="{ name: 'terms' }">用户协议</RouterLink>
+          <span class="h-3 w-px bg-ink-line" />
+          <RouterLink class="hover:text-primary" :to="{ name: 'privacy' }">隐私政策</RouterLink>
+        </p>
+        <BeianFooter :info="site" />
+      </footer>
     </section>
   </div>
 </template>

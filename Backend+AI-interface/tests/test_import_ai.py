@@ -148,6 +148,9 @@ def test_text_pdf_uses_text_and_any_model(client, auth, fake_llm):  # noqa: F811
     assert preview["total_weeks"] == 20 and preview["courses"][1]["weeks"] == list(range(2, 19, 2))
     sent = calls[-1]["body"]
     assert sent["response_format"] == {"type": "json_object"}
+    # DeepSeek 默认会思考：课表识别显式关闭（实测 v4-pro 57s → 7s）
+    assert sent["thinking"] == {"type": "disabled"} and "reasoning_effort" not in sent
+    assert preview["model"] == "DeepSeek · deepseek-chat"
     assert isinstance(sent["messages"][1]["content"], str) and "Advanced Math" in sent["messages"][1]["content"]
 
 
@@ -167,7 +170,16 @@ def test_model_without_vision(client, auth, fake_llm):  # noqa: F811
     # 已知的纯文本模型：不发请求，直接提示
     text_only = _provider(client, auth, "deepseek-chat", "DeepSeek")
     response = _recognize(client, auth, "kb.jpg", png_bytes((300, 200), "RGB"), text_only)
-    assert body(response, 422) is None and "不支持图片识别" in response.json()["message"] and calls == []
+    data = body(response, 422)
+    assert data["reason"] == "no_vision" and data["source"] == "image" and calls == []
+    assert "不支持图片识别" in response.json()["message"] and "文字版 PDF" in response.json()["message"]
+    # DeepSeek 新模型（flash / v4-pro）同样是纯文本：扫描版 PDF 也直接提示，并说明原因
+    for model in ("deepseek-flash", "deepseek-v4-pro"):
+        provider = _provider(client, auth, model, "DeepSeek")
+        response = _recognize(client, auth, "扫描.pdf", scanned_pdf(), provider)
+        data = body(response, 422)
+        assert data["reason"] == "no_vision" and data["source"] == "pdf-image" and "扫描件" in response.json()["message"]
+    assert calls == []
 
     # 未知模型被服务端以 400 拒绝图片：映射为同样的提示
     unknown = _provider(client, auth, "my-local-model", "本地")
@@ -179,7 +191,13 @@ def test_model_without_vision(client, auth, fake_llm):  # noqa: F811
     vision_model = _provider(client, auth, "gpt-4o", "OpenAI")
     queue.append(http_error(429))
     response = _recognize(client, auth, "kb.png", png_bytes((300, 200)), vision_model)
-    assert body(response, 502) is None and "额度" in response.json()["message"]
+    assert body(response, 502)["reason"] == "model_error" and "额度" in response.json()["message"]
+
+    # 超时：504 + reason=timeout，前端据此提示
+    import socket
+    queue.append(socket.timeout())
+    response = _recognize(client, auth, "kb.png", png_bytes((300, 200)), vision_model)
+    assert body(response, 504)["reason"] == "timeout" and "秒内没有返回" in response.json()["message"]
 
 
 def test_bad_files_and_provider_choice(client, register, fake_llm):  # noqa: F811
@@ -189,7 +207,7 @@ def test_bad_files_and_provider_choice(client, register, fake_llm):  # noqa: F81
     mine = _provider(client, alice, "qwen-vl-max")
     # 默认 auto 且服务器未配置 DeepSeek：规则引擎无法识别图片
     response = _recognize(client, bob, "kb.png", png_bytes((100, 100)))
-    assert body(response, 422) is None and "规则引擎" in response.json()["message"]
+    assert body(response, 422)["reason"] == "no_model" and "规则引擎" in response.json()["message"]
     body(_recognize(client, bob, "kb.png", png_bytes((100, 100)), "env"), 422)
     # 不能使用别人的模型配置
     body(_recognize(client, bob, "kb.png", png_bytes((100, 100)), mine), 404)

@@ -1,8 +1,11 @@
 <script setup>
-/** 设置页 · 专注设置（白噪音默认、音量、防切出提醒） */
-import { ref } from 'vue'
+/** 设置页 · 专注设置（默认声音：白噪音或我的歌单、音量、防切出提醒、我的音乐） */
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
+import MusicLibrary from './MusicLibrary.vue'
 import { NOISES, guardEnabled, setGuardEnabled } from '@/utils/noise'
+import { playlistKey } from '@/utils/music'
+import { library, playlistForKey, reloadLibrary } from '@/composables/useMusicLibrary'
 import { useFocusStore } from '@/stores/focus'
 import { useUiStore } from '@/stores/ui'
 
@@ -10,6 +13,13 @@ const focus = useFocusStore()
 const ui = useUiStore()
 const guard = ref(guardEnabled())
 const previewing = ref(false)
+let previewTimer = null
+
+onMounted(async () => {
+  await reloadLibrary()
+  // 默认声音指向的歌单已被删除：退回关闭
+  if (focus.noiseKind.startsWith('playlist:') && !playlistForKey(focus.noiseKind) && !library.error) focus.setNoise('off')
+})
 
 const toggleGuard = () => {
   guard.value = !guard.value
@@ -20,13 +30,18 @@ const toggleGuard = () => {
 const pick = (key) => {
   // 设置页里只记住选择并短暂试听，不影响进行中的专注
   focus.setNoise(key)
-  if (key === 'off' || focus.status === 'running') return
+  clearTimeout(previewTimer)
+  if (key === 'off' || focus.status === 'running') return (previewing.value = false)
   previewing.value = true
-  setTimeout(() => {
+  previewTimer = setTimeout(() => {
     if (focus.status !== 'running') focus.stopPreview()
     previewing.value = false
-  }, 2500)
+  }, 3000)
 }
+onBeforeUnmount(() => {
+  clearTimeout(previewTimer)
+  if (previewing.value) focus.stopPreview()
+})
 </script>
 
 <template>
@@ -36,8 +51,8 @@ const pick = (key) => {
       <div class="flex items-center gap-3">
         <Icon icon="lucide:headphones" width="20" class="text-primary" />
         <span class="flex-1">
-          <span class="block text-sm font-semibold text-ink">默认白噪音</span>
-          <span class="block text-[11px] text-ink-mute">开始专注时自动播放；本机实时生成，不消耗流量{{ previewing ? ' · 试听中' : '' }}</span>
+          <span class="block text-sm font-semibold text-ink">默认声音</span>
+          <span class="block text-[11px] text-ink-mute">开始专注时自动播放，暂停 / 结束时跟着停；白噪音本机实时生成，不消耗流量{{ previewing ? ' · 试听中' : '' }}</span>
         </span>
       </div>
       <div class="mt-3 grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="默认白噪音">
@@ -54,6 +69,20 @@ const pick = (key) => {
           <Icon :icon="n.icon" width="18" />{{ n.label }}
         </button>
       </div>
+      <div v-if="library.playlists.length" class="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="或播放我的歌单">
+        <button
+          v-for="p in library.playlists"
+          :key="p.id"
+          type="button"
+          role="radio"
+          :aria-checked="focus.noiseKind === playlistKey(p.id)"
+          class="chip max-w-full"
+          :class="focus.noiseKind === playlistKey(p.id) && 'chip-active'"
+          @click="pick(playlistKey(p.id))"
+        >
+          <Icon icon="lucide:list-music" width="13" class="shrink-0" /><span class="truncate">{{ p.name }}</span><span class="num opacity-70">· {{ p.trackIds.length }}</span>
+        </button>
+      </div>
       <label v-if="focus.noiseKind !== 'off'" class="mt-3 flex items-center gap-3">
         <Icon icon="lucide:volume-2" width="16" class="shrink-0 text-ink-mute" />
         <input
@@ -63,7 +92,7 @@ const pick = (key) => {
           step="0.05"
           :value="focus.noiseVolume"
           class="h-1.5 flex-1 accent-primary"
-          aria-label="白噪音音量"
+          aria-label="专注声音音量"
           @input="focus.setNoiseVolume(Number($event.target.value))"
         />
         <span class="num w-8 text-right text-[11px] text-ink-mute">{{ Math.round(focus.noiseVolume * 100) }}</span>
@@ -81,4 +110,5 @@ const pick = (key) => {
       </span>
     </button>
   </div>
+  <MusicLibrary />
 </template>

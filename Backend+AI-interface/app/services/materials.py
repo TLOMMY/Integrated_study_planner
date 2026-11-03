@@ -260,7 +260,7 @@ def extract_outline(db: Session, user: User, file_name: str, content: bytes) -> 
     if config is not None:
         try:
             chapters = llm_outline(config, chapters, pages, total, file_name)
-            provider, model = "llm", f"{config.name} · {config.model}"
+            provider, model = "llm", f"{config.name} · {providers.model_label(config.model)}"
         except LlmError as error:
             fallback = f"模型整理失败，已按规则提取：{error.message}"
 

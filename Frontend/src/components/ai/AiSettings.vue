@@ -5,6 +5,8 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import { aiApi } from '@/api'
 import { useAiStore } from '@/stores/ai'
 import { useUiStore } from '@/stores/ui'
+import { friendlyLabel, modelLabel } from '@/utils/aiModels'
+import AiQuotaNote from '@/components/ai/AiQuotaNote.vue'
 
 const props = defineProps({ open: { type: Boolean, default: false } })
 const emit = defineEmits(['close'])
@@ -114,6 +116,18 @@ const THINKING = [
 const thinkingValue = computed(() => s.value?.resolved?.thinking_setting || 'high')
 const thinkingEnabled = computed(() => s.value?.resolved?.provider === 'llm' && s.value?.resolved?.thinking_supported)
 const setThinking = (key) => ai.setThinking(key).catch((error) => ui.fail(error))
+const setEnvModel = async (key) => {
+  if (s.value?.env?.model === key) return
+  busy.value = 'env-model'
+  try {
+    await ai.setEnvModel(key)
+    ui.success(`服务器模型：${modelLabel(key)}`)
+  } catch (error) {
+    ui.fail(error)
+  } finally {
+    busy.value = ''
+  }
+}
 const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.fail(error))
 </script>
 
@@ -129,12 +143,13 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
     <!-- 配置列表 -->
     <div v-else-if="view === 'list'" class="space-y-2.5 pb-2">
       <p class="rounded-2xl bg-primary-light px-4 py-2.5 text-xs font-semibold text-primary">
-        当前使用：{{ s.resolved.label }}
+        当前使用：{{ friendlyLabel(s.resolved.label) }}
       </p>
+      <AiQuotaNote :quota="s.resolved.quota" />
 
       <div class="rounded-3xl border border-ink-line/70 p-3.5" :class="!thinkingEnabled && 'opacity-60'">
         <p class="flex items-center gap-1.5 text-sm font-black text-ink"><Icon icon="lucide:brain" width="16" class="text-primary" />思考强度</p>
-        <p class="mt-0.5 text-[11px] text-ink-mute">{{ thinkingEnabled ? '开启后模型会先思考再回答，追问和排程更靠谱，但会慢一些' : '当前模型不支持思考模式（如 deepseek-v4-pro 才支持），不会传思考参数' }}</p>
+        <p class="mt-0.5 text-[11px] text-ink-mute">{{ thinkingEnabled ? '开启后模型会先思考再回答，追问和排程更靠谱，但会慢一些' : '当前模型不支持思考模式（DeepSeek 的 Flash / Pro 才支持），不会传思考参数' }}</p>
         <div class="mt-2 grid grid-cols-3 gap-2">
           <button
             v-for="t in THINKING"
@@ -151,33 +166,63 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
         </div>
       </div>
 
-      <button
-        type="button"
-        class="flex w-full items-center gap-3 rounded-3xl border-2 p-3.5 text-left transition"
-        :class="s.active === 'auto' ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
-        @click="activate('auto')"
-      >
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-background text-ink-soft"><Icon icon="lucide:server" width="20" /></span>
-        <span class="min-w-0 flex-1">
-          <span class="block text-sm font-black text-ink">自动</span>
-          <span class="block truncate text-[11px] text-ink-mute">{{ s.env.configured ? `${s.env.name} · ${s.env.model}` : '服务器未配置模型，将使用本地规则引擎' }}</span>
-        </span>
-        <Icon v-if="s.active === 'auto'" icon="lucide:circle-check" width="20" class="text-primary" />
-      </button>
+      <div class="relative">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-3xl border-2 p-3.5 text-left transition"
+          :class="[s.active === 'auto' ? 'border-primary bg-primary-light/40' : 'border-ink-line/70', !s.env.configured && 'pr-24']"
+          @click="activate('auto')"
+        >
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-background text-ink-soft"><Icon icon="lucide:server" width="20" /></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-black text-ink">自动</span>
+            <span class="block truncate text-[11px] text-ink-mute">{{ s.env.configured ? `${s.env.name} · ${s.env.model_label || modelLabel(s.env.model)}` : '服务器未配置模型，将使用本地规则引擎' }}</span>
+          </span>
+          <Icon v-if="s.active === 'auto'" icon="lucide:circle-check" width="20" class="text-primary" />
+        </button>
+        <!-- 服务器未配置模型时会用规则引擎，给出写法说明的入口 -->
+        <RouterLink v-if="!s.env.configured" :to="{ name: 'manual', hash: '#rule-templates' }" class="absolute right-11 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-mute hover:bg-background hover:text-primary" aria-label="本地规则引擎能听懂哪些写法" title="能听懂哪些写法" @click="emit('close')"><Icon icon="lucide:circle-help" width="17" /></RouterLink>
+      </div>
 
-      <button
-        type="button"
-        class="flex w-full items-center gap-3 rounded-3xl border-2 p-3.5 text-left transition"
-        :class="s.active === 'rule' ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
-        @click="activate('rule')"
-      >
-        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-background text-ink-soft"><Icon icon="lucide:cpu" width="20" /></span>
-        <span class="min-w-0 flex-1">
-          <span class="block text-sm font-black text-ink">本地规则引擎</span>
-          <span class="block text-[11px] text-ink-mute">不联网、秒出结果，建议为模板化文字</span>
-        </span>
-        <Icon v-if="s.active === 'rule'" icon="lucide:circle-check" width="20" class="text-primary" />
-      </button>
+      <!-- 服务器 DeepSeek 下可选 Flash / Pro（存到账号上） -->
+      <div v-if="s.env.configured && s.env.models?.length" class="-mt-1 rounded-3xl border border-ink-line/70 p-3.5" role="radiogroup" aria-label="服务器 DeepSeek 使用的模型">
+        <p class="text-xs font-black text-ink">服务器 DeepSeek 使用</p>
+        <div class="mt-2 grid grid-cols-2 gap-2">
+          <button
+            v-for="m in s.env.models"
+            :key="m.key"
+            type="button"
+            role="radio"
+            :aria-checked="s.env.model === m.key"
+            class="rounded-2xl border-2 px-2.5 py-2 text-left transition"
+            :class="s.env.model === m.key ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
+            :disabled="busy === 'env-model'"
+            @click="setEnvModel(m.key)"
+          >
+            <span class="block text-xs font-black" :class="s.env.model === m.key ? 'text-primary' : 'text-ink'">{{ m.label }}</span>
+            <span class="mt-0.5 block text-[10px] leading-4 text-ink-mute">{{ m.hint }}</span>
+          </button>
+        </div>
+        <p class="mt-2 text-[10px] leading-4 text-ink-mute">两者都支持思考模式；课表识别、讲义整理等会自动关闭思考以加快速度{{ s.env.selected ? '' : '，未选择时课表识别默认用 Flash' }}。</p>
+      </div>
+
+      <div class="relative">
+        <button
+          type="button"
+          class="flex w-full items-center gap-3 rounded-3xl border-2 p-3.5 pr-24 text-left transition"
+          :class="s.active === 'rule' ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
+          @click="activate('rule')"
+        >
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-background text-ink-soft"><Icon icon="lucide:cpu" width="20" /></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-black text-ink">本地规则引擎</span>
+            <span class="block text-[11px] text-ink-mute">不联网、秒出结果，建议为模板化文字</span>
+          </span>
+        </button>
+        <Icon v-if="s.active === 'rule'" icon="lucide:circle-check" width="20" class="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-primary" />
+        <!-- 跳到使用手册里规则引擎能听懂的写法 -->
+        <RouterLink :to="{ name: 'manual', hash: '#rule-templates' }" class="absolute right-11 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-ink-mute hover:bg-background hover:text-primary" aria-label="本地规则引擎能听懂哪些写法" title="能听懂哪些写法" @click="emit('close')"><Icon icon="lucide:circle-help" width="17" /></RouterLink>
+      </div>
 
       <div
         v-for="p in s.providers"
@@ -189,7 +234,7 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
           <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-xp text-on-primary"><Icon icon="lucide:sparkles" width="20" /></span>
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm font-black text-ink">{{ p.name }}</span>
-            <span class="block truncate text-[11px] text-ink-mute">{{ p.model }} · {{ p.has_key ? p.key_masked : '无 Key' }}</span>
+            <span class="block truncate text-[11px] text-ink-mute">{{ modelLabel(p.model) }} · {{ p.has_key ? p.key_masked : '无 Key' }}</span>
             <span v-if="p.key_unreadable" class="block text-[11px] font-bold text-danger">密钥已失效，请重新填写</span>
           </span>
         </button>

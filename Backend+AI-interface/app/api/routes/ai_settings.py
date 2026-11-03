@@ -19,17 +19,29 @@ router = APIRouter(prefix="/ai", tags=["AI 模型设置"])
 MAX_PROVIDERS = 10
 
 
+def _import_label(config) -> str:
+    return f"{config.name} · {providers.model_label(config.model)}" if config is not None else ""
+
+
 def _settings_payload(db, user: User) -> dict:
     active = user.ai_provider or "auto"
     items = db.query(AiProvider).filter(AiProvider.user_id == user.id).order_by(AiProvider.id).all()
-    env = providers.env_config()
+    env = providers.env_config(model=providers.env_model_choice(user))
     return {
         "active": active,
         "resolved": providers.active_info(db, user),
         "env": {"configured": env is not None, "name": providers.ENV_NAME,
-                "model": env.model if env else None},
+                "model": env.model if env else None,
+                "model_label": providers.model_label(env.model) if env else None,
+                # 用户为服务器 DeepSeek 选的模型（空 = 跟随服务器默认）与可选项
+                "selected": providers.env_model_choice(user),
+                "effective": providers.env_model_choice(user) or (env.model if env else None),
+                "models": providers.ENV_MODELS},
         # 服务器配置（auto）下的思考强度，存在账号上；各自定义配置的思考强度见 providers[].thinking
         "env_thinking": providers._thinking(user.ai_thinking),
+        # 课表识别（图片 / PDF）实际使用的模型：与 AI 对话同一套配置，服务器 DeepSeek 默认换 Flash、关闭思考
+        "import_label": _import_label(providers.extraction_config(providers.resolve(db, user), user)),
+        "env_import_label": _import_label(providers.extraction_config(env, user)),
         "thinking_levels": [{"key": k, "label": v} for k, v in providers.THINKING_LABELS.items()],
         "providers": [providers.provider_to_dict(p, active) for p in items],
         "presets": providers.PRESETS,
@@ -69,8 +81,15 @@ def update_settings(payload: AiSettingsIn, user: CurrentUser, db: DB):
             provider.thinking = payload.thinking
         else:
             user.ai_thinking = payload.thinking
+    if payload.env_model is not None:
+        user.ai_env_model = payload.env_model
     db.commit()
-    message = "已切换模型" if payload.active is not None else f"思考强度：{providers.THINKING_LABELS[payload.thinking]}"
+    if payload.active is not None:
+        message = "已切换模型"
+    elif payload.env_model is not None:
+        message = f"服务器模型：{providers.model_label(payload.env_model)}"
+    else:
+        message = f"思考强度：{providers.THINKING_LABELS[payload.thinking]}"
     return ok(_settings_payload(db, user), message)
 
 

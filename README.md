@@ -44,21 +44,24 @@
 - 课前 10 分钟提醒
 - 课表导出为图片；生成分享码，同学输入后即可导入同一份课表
 - 考试倒计时：记录考试日期，临近时提醒，并可由 AI 按剩余天数排出复习计划
+- 多套课表：可新建、重命名、切换与整套删除（如主修、辅修、不同学期），导入时可选择导入为新课表
 
 **任务与日程**
 - 今天、即将、已完成三种任务视图，逾期任务一键移到今天
 - 四级优先级、重复任务（每天、工作日、每周）、未定时间的全天任务
 - 标签、清单分组、子任务清单与单独的提醒时间；备注中的网址可直接点击打开
-- 按标题、科目、备注搜索全部任务；多选后批量删除或修改日期
+- 按标题、科目、备注搜索全部任务，支持课程简称（如搜"高数"可找到"高等数学"）；多选后批量删除或修改日期
 - 日、周、月三种日程视图，课程与任务按时间顺序统一展示；周视图与月视图中可拖动任务改期
 
 **专注计时**
 - 番茄钟可关联具体任务，预设时长与自定义时长（1–180 分钟）
 - 基于时间戳计时，切换页面、锁屏或刷新不影响准确性；提前结束按实际分钟记录
 - 白噪音、粉红噪音、棕噪音与雨声；记录专注期间切出页面的次数；同一账号在多台设备间同步进行中的专注
+- 我的音乐：导入本地 mp3、wav、ogg、m4a、flac 歌曲并管理歌单（排序、循环、随机），随专注开始与暂停；歌曲只保存在本设备
 
 **成长激励**
 - 经验值与等级、连续学习天数及断签提醒、每日专注目标
+- 打卡规则：当天专注满 5 分钟或完成 1 个任务即算打卡，首页与成长页显示今日是否已打卡
 - 断签保护卡：连续学习每满 7 天获得 1 张，漏学一天时自动补上
 - 15 项成就、本周经验值排行榜、学习热力图、近 7 天与近 30 天统计、科目时长分布
 - 每周学习报告：专注、任务与科目数据及与上周的对比，并附 AI 复盘建议
@@ -67,12 +70,14 @@
 
 **AI 学习助手**
 - 以对话方式工作：先读取课表、已有任务与空闲时段，信息不足时主动追问，再给出方案
-- 可新建学习任务、添加课程，或修改已有任务与课程的时间；所有改动先以卡片形式展示，确认后才写入
+- 可新建学习任务、添加课程，修改或删除已有的任务与课程；所有改动先以卡片形式展示，确认后才写入，删除后可撤销
 - 导入前可逐项修改日期与时间；逐条导入，失败的条目单独说明原因（如与课程时间冲突）
+- 支持语音输入；AI 生成的内容统一标注"AI 生成"
 - 可联网搜索 B 站等平台的课程视频，链接写入任务备注
 - 上传讲义或 PDF 生成章节大纲，并据此排出复习计划
 - 保存多个对话，可随时切换与继续；无模型时由本地规则引擎完成规划
 - 支持任何 OpenAI 兼容模型（DeepSeek、通义千问、Kimi、智谱、Ollama 等），密钥加密保存；可选择思考深度
+- 使用服务器提供的 DeepSeek 时可选择 V4.1 Flash（快）或 V4 Pro（强），每人每日有使用次数上限；添加自己的模型 Key 不受限制
 - 按学习时段偏好排程：根据近 60 天专注记录自动判断，也可自定义优先时段、避开时段与单次时长
 
 **学习计划**
@@ -84,10 +89,15 @@
 - 绑定邮箱与手机号、修改密码、退出其他设备
 - 连续输错密码 5 次锁定 10 分钟；修改密码后其他设备上的登录立即失效
 - 导出全部个人数据、注销账号
+- 注册时须同意用户协议与隐私政策，两份文件可随时在应用内查看
 
 **问题反馈与管理后台**
 - 用户在设置中提交反馈，可查看处理进度与管理员回复
-- 管理员看板：用户与活跃统计、反馈处理、前端错误记录；仅指定的管理员账号可以进入
+- 管理员看板：用户与活跃统计、AI 用量统计、反馈处理、前端错误记录；可调整每人每日 AI 使用上限；仅指定的管理员账号可以进入
+
+**新手引导与帮助**
+- 新账号首次登录时显示分步新手教程，可随时重新查看
+- 使用手册：按功能分节、可搜索；列出本地规则引擎能识别的输入写法与例句，界面中相关位置可一键跳转
 
 **个性化与多端**
 - 七种主题：默认、深色、跟随系统，以及晨光杏桃、雾松青、夜读靛、赤陶纸四种玻璃质感主题；主题随账号同步
@@ -125,16 +135,16 @@
 
 ### 版本迭代
 
-> 以下 v1.0 至 v4.0 均为内部测试版本，用于开发过程中的功能迭代与验证。
+> 正式版本从 1.0 开始。1.0 之前的三个阶段为内部测试版本，用于开发过程中的功能迭代与验证。
 
-**v1.0 · 基础模块**
+**内部测试一 · 基础模块**
 - 后端 FastAPI 框架与 SQLite 数据库设计
 - 教务 Excel 课表解析、PDF 章节提取与导入接口
 - 学习任务与学习计划的基础接口
 - 接入 DeepSeek 生成学习计划
 - Vue 3 前端页面框架
 
-**v2.0 · 系统重构与联动**
+**内部测试二 · 系统重构与联动**
 - 统一接口协议 `{code, message, data}`，JWT 鉴权与用户数据隔离，前后端接口契约测试
 - 课表支持教学周、单双周、冲突检测，自动识别开学日期与总周数
 - 任务视图、优先级、重复任务、自然语言快速添加
@@ -143,7 +153,7 @@
 - AI 规划改为读取课表、按空闲时段排程，先生成草稿、确认后导入；无模型时使用规则引擎
 - 日、周、月日程视图；旧数据库启动时自动升级
 
-**v3.0 · 智能化与多端**
+**内部测试三 · 智能化与多端**
 - AI 支持自定义 OpenAI 兼容模型；回复分为学习建议与结构化计划，可按天导入；10 轮对话记忆与日期范围识别
 - 课表新增教务系统网页导入与图片、PDF 的 AI 识别导入
 - 学习时段偏好设置，AI 排程优先安排习惯时段
@@ -152,7 +162,7 @@
 - 登录失败锁定、修改密码后旧凭证失效
 - 电脑端多栏布局与 PWA 安装；Windows 与 Android 客户端
 
-**v4.0 · AI 助手与体验完善**
+**1.0 · 首个正式版本：AI 助手与体验完善**
 - AI 改为对话式助手：读取课表与任务后再回答，信息不足时追问；可新建任务、添加课程、修改已有安排，改动确认后写入
 - AI 方案导入前可逐项改时间，逐条导入并说明失败原因；联网搜索课程视频；讲义生成大纲与复习计划；多对话保存
 - 任务标签、清单、子任务与提醒时间；周视图与月视图拖动改期
@@ -160,6 +170,14 @@
 - 白噪音、切出次数统计、多设备专注同步；断签保护卡、科目分布、每周学习报告、学习小组
 - 邮箱验证码与找回密码；反馈处理进度与管理员回复；管理员看板与前端错误记录
 - 七种主题与无障碍选项、键盘快捷键、断网提示；端到端测试
+
+**1.1 · 功能完善与上线准备**
+- 多套课表：新建、重命名、切换、整套删除，导入与分享码导入均可选择导入为新课表
+- AI 助手可删除任务与课程，确认后执行并可撤销；导入前修改日期不再被打断；AI 生成内容统一标注
+- 服务器 DeepSeek 可选 V4.1 Flash 或 V4 Pro；图片与 PDF 课表识别关闭思考模式，识别时间从约一分钟缩短到数秒，失败时说明原因
+- 任务搜索与联网搜索支持课程简称；打卡规则明确为专注满 5 分钟或完成 1 个任务
+- 我的音乐与歌单、语音输入、新手教程、使用手册
+- 上线准备：每人每日 AI 用量上限与后台统计、用户协议与隐私政策、备案号展示、介绍下载页、持续集成、备份恢复与故障告警，登录锁定与限流记录重启后不丢失
 
 ### 本地运行
 
@@ -260,7 +278,8 @@ Frontend/               前端：Vue 3 + Vite + Pinia + Tailwind CSS
   android/              Android 客户端工程（Capacitor）
 desktop/                Windows 客户端（Electron）
 e2e/                    端到端测试（电脑与手机尺寸）
-deploy/                 服务器配置文件
+deploy/                 服务器部署、备份恢复、健康检查与介绍下载页
+.github/workflows/      持续集成（推送后自动运行测试与构建）
 docs/                   功能截图与数据库设计文档
 data-import/            课表解析原型与示例课表
 ```
@@ -268,8 +287,8 @@ data-import/            课表解析原型与示例课表
 ### 测试
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 后端 174 个用例，使用临时数据库，不访问外网
-cd Frontend && npm test                          # 前端 16 个单元测试
+cd Backend+AI-interface && python -m pytest     # 后端 273 个用例，使用临时数据库，不访问外网
+cd Frontend && npm test                          # 前端 45 个单元测试
 cd Frontend && npm run build                     # 生产构建
 cd e2e && npm install && npm test                # 端到端测试，使用本机 Edge 浏览器
 ```
@@ -280,10 +299,11 @@ cd e2e && npm install && npm test                # 端到端测试，使用本�
 
 | 版本 | 状态 | 内容 |
 |---|---|---|
-| v1.0 | ✅ 已完成（内部测试） | 基础模块：后端框架、课表解析、任务与计划接口、DeepSeek 接入、前端框架 |
-| v2.0 | ✅ 已完成（内部测试） | 系统重构：统一协议与鉴权、课表周次、任务体系、专注计时、成长激励、空闲时段排程 |
-| v3.0 | ✅ 已完成（内部测试） | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
-| v4.0 | ✅ 已完成（内部测试） | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
+| 内部测试一 | ✅ 已完成 | 基础模块：后端框架、课表解析、任务与计划接口、DeepSeek 接入、前端框架 |
+| 内部测试二 | ✅ 已完成 | 系统重构：统一协议与鉴权、课表周次、任务体系、专注计时、成长激励、空闲时段排程 |
+| 内部测试三 | ✅ 已完成 | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
+| 1.0 | ✅ 正式版 | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
+| 1.1 | ✅ 正式版 | 功能完善与上线准备：多套课表、AI 删除与撤销、课表识别提速、简称搜索、音乐与语音输入、新手教程与使用手册、AI 用量上限与合规 |
 
 ### 团队
 
@@ -319,21 +339,24 @@ Students typically switch between several apps, re-enter the same information an
 - Reminders 10 minutes before class
 - Export the timetable as an image; share it with a code that classmates can enter to import the same timetable
 - Exam countdown: record exam dates, get reminders as they approach, and let the AI build a revision plan for the days left
+- Multiple timetables: create, rename, switch and delete whole timetables (for example a major, a minor or different semesters), and import into a new timetable
 
 **Tasks and calendar**
 - Today, Upcoming and Completed views; move overdue tasks to today in one step
 - Four priority levels, repeating tasks (daily, weekdays, weekly) and all-day tasks without a fixed time
 - Tags, lists, checklists and per-task reminder times; web links in notes open with a click
-- Search across titles, subjects and notes; multi-select to delete or reschedule in bulk
+- Search across titles, subjects and notes, including course abbreviations (searching "高数" finds "高等数学"); multi-select to delete or reschedule in bulk
 - Day, week and month views with courses and tasks shown together in chronological order; drag tasks to reschedule in the week and month views
 
 **Focus timer**
 - Pomodoro sessions linked to tasks, with presets and custom durations (1–180 minutes)
 - Timestamp-based timing that stays accurate across page switches, screen locks and reloads; early finishes are recorded by actual minutes
 - White, pink and brown noise and rain sounds; counts how often the user leaves the page during a session; an active session is synced across the user's devices
+- My music: import local mp3, wav, ogg, m4a and flac songs and manage playlists (order, loop, shuffle) that start and pause with the focus session; songs are stored only on the device
 
 **Motivation**
 - Experience points and levels, study streaks with at-risk alerts, daily focus goal
+- Check-in rule: a day counts when the user focuses for at least 5 minutes or completes 1 task; the home and growth pages show whether today is checked in
 - Streak protection: one protection card for every 7 consecutive study days, used automatically when a day is missed
 - 15 achievements, weekly leaderboard, study heatmap, 7-day and 30-day statistics, time by subject
 - Weekly study report: focus, task and subject figures compared with the previous week, with an AI review
@@ -342,12 +365,14 @@ Students typically switch between several apps, re-enter the same information an
 
 **AI study assistant**
 - Works as a conversation: reads the timetable, existing tasks and free slots first, asks follow-up questions when information is missing, then proposes a plan
-- Creates study tasks, adds courses, or moves existing tasks and courses; every change is shown as a card and written only after confirmation
+- Creates study tasks, adds courses, and changes or deletes existing tasks and courses; every change is shown as a card and written only after confirmation, and deletions can be undone
+- Voice input; AI-generated content is labelled "AI 生成"
 - Dates and times can be edited item by item before import; items are imported one by one, and any that fail are listed with the reason (for example, a clash with a class)
 - Searches the web for course videos on Bilibili and similar platforms and adds the links to the task note
 - Generates a chapter outline from uploaded handouts or PDFs and builds a revision plan from it
 - Keeps multiple conversations that can be resumed at any time; a local rule engine handles planning when no model is configured
 - Works with any OpenAI-compatible model (DeepSeek, Qwen, Kimi, GLM, Ollama and others) with encrypted key storage and a selectable reasoning depth
+- With the server's DeepSeek, users choose V4.1 Flash (fast) or V4 Pro (strong) under a daily per-user limit; users who add their own model key are not limited
 - Schedules by study-time preference, either learned from the last 60 days of focus records or set manually (preferred and avoided periods, session length)
 
 **Study plans**
@@ -359,10 +384,15 @@ Students typically switch between several apps, re-enter the same information an
 - Email and phone binding, password change, sign out of other devices
 - Lockout for 10 minutes after 5 failed sign-in attempts; other sessions are revoked when the password changes
 - Full data export and account deletion
+- Sign-up requires accepting the terms of service and privacy policy, both viewable in the app at any time
 
 **Feedback and admin console**
 - Users submit feedback from Settings and can follow its status and read replies from the maintainers
-- Admin console with user and activity statistics, feedback handling and frontend error logs; only designated admin accounts can open it
+- Admin console with user and activity statistics, AI usage statistics, feedback handling and frontend error logs; the daily AI limit per user can be adjusted; only designated admin accounts can open it
+
+**Onboarding and help**
+- A step-by-step tour on a new account's first sign-in, which can be replayed at any time
+- A searchable user manual organised by feature, including the input patterns and example sentences the local rule engine understands, linked from the relevant places in the interface
 
 **Personalisation and multi-platform**
 - Seven themes: Default, Dark, Follow System, and four glass-style themes (Apricot Dawn, Mist Pine, Night Indigo, Terracotta Paper); the chosen theme syncs with the account
@@ -377,16 +407,16 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 
 ### Release history
 
-> Versions v1.0 to v4.0 below are internal test builds, used to iterate on and verify features during development.
+> Official versions start at 1.0. The three stages before 1.0 were internal test builds, used to iterate on and verify features during development.
 
-**v1.0 · Foundations**
+**Internal test 1 · Foundations**
 - FastAPI backend and SQLite schema
 - Excel timetable parsing, PDF chapter extraction and import endpoints
 - Basic task and study-plan APIs
 - DeepSeek-based plan generation
 - Vue 3 frontend skeleton
 
-**v2.0 · Rebuild and integration**
+**Internal test 2 · Rebuild and integration**
 - Unified `{code, message, data}` protocol, JWT authentication with per-user isolation, frontend–backend API contract tests
 - Teaching weeks, odd/even weeks, conflict detection, automatic semester detection on import
 - Task views, priorities, repeating tasks, natural-language quick add
@@ -395,7 +425,7 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 - AI planning based on the timetable and free slots, draft-then-confirm import, rule-engine fallback
 - Day, week and month views; automatic upgrade of older databases at startup
 
-**v3.0 · Intelligence and multi-platform**
+**Internal test 3 · Intelligence and multi-platform**
 - Custom OpenAI-compatible models; two-part replies with per-day import; 10-turn memory and date-range recognition
 - Timetable import from academic-affairs web pages and AI recognition of images and PDFs
 - Study-time preferences used by the scheduler
@@ -404,7 +434,7 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 - Sign-in lockout and session revocation on password change
 - Desktop multi-column layout and PWA installation; Windows and Android clients
 
-**v4.0 · AI assistant and refinement**
+**1.0 · First official release: AI assistant and refinement**
 - The AI becomes a conversational assistant that reads the timetable and tasks before answering and asks follow-up questions; it can create tasks, add courses and change existing entries, applied after confirmation
 - Per-item time editing before import, item-by-item import with failure reasons, web search for course videos, outlines and revision plans from handouts, saved conversations
 - Task tags, lists, checklists and reminder times; drag-to-reschedule in the week and month views
@@ -412,6 +442,14 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 - Ambient noise, leave-page counts and cross-device focus sync; streak protection, subject breakdown, weekly reports and study groups
 - Email verification codes and password reset; feedback status and replies; admin console with frontend error logs
 - Seven themes with accessibility options, keyboard shortcuts, offline notice; end-to-end tests
+
+**1.1 · Refinement and launch readiness**
+- Multiple timetables: create, rename, switch and delete whole timetables; file and share-code imports can go into a new timetable
+- The AI assistant can delete tasks and courses after confirmation, with undo; editing dates before import is no longer interrupted; AI-generated content is labelled
+- Choice of V4.1 Flash or V4 Pro for the server's DeepSeek; image and PDF timetable recognition runs without the reasoning mode, cutting recognition from about a minute to a few seconds, and failures explain the reason
+- Course abbreviations in task search and web search; the check-in rule is set to 5 minutes of focus or 1 completed task
+- My music and playlists, voice input, onboarding tour and user manual
+- Launch readiness: daily per-user AI limit with admin statistics, terms of service and privacy policy, ICP filing number display, landing and download page, continuous integration, backup restore and failure alerts; sign-in lockout and rate-limit records survive restarts
 
 ### Run locally
 
@@ -500,7 +538,8 @@ Frontend/               Frontend: Vue 3 + Vite + Pinia + Tailwind CSS
   android/              Android client (Capacitor)
 desktop/                Windows client (Electron)
 e2e/                    End-to-end tests (desktop and phone sizes)
-deploy/                 Server configuration files
+deploy/                 Server deployment, backup restore, health checks and the landing page
+.github/workflows/      Continuous integration (tests and builds run on every push)
 docs/                   Screenshots and database design documents
 data-import/            Timetable parsing prototypes and a sample timetable
 ```
@@ -508,8 +547,8 @@ data-import/            Timetable parsing prototypes and a sample timetable
 ### Tests
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 174 backend cases, temporary database, no network access
-cd Frontend && npm test                          # 16 frontend unit tests
+cd Backend+AI-interface && python -m pytest     # 273 backend cases, temporary database, no network access
+cd Frontend && npm test                          # 45 frontend unit tests
 cd Frontend && npm run build                     # production build
 cd e2e && npm install && npm test                # end-to-end tests using the local Edge browser
 ```
@@ -520,10 +559,11 @@ Backend tests cover authentication and data isolation, timetable and import, tas
 
 | Version | Status | Scope |
 |---|---|---|
-| v1.0 | ✅ Done (internal test) | Foundations: backend framework, timetable parsing, task and plan APIs, DeepSeek integration, frontend skeleton |
-| v2.0 | ✅ Done (internal test) | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
-| v3.0 | ✅ Done (internal test) | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
-| v4.0 | ✅ Done (internal test) | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
+| Internal test 1 | ✅ Done | Foundations: backend framework, timetable parsing, task and plan APIs, DeepSeek integration, frontend skeleton |
+| Internal test 2 | ✅ Done | Rebuild: unified protocol and auth, teaching weeks, task system, focus timer, motivation, free-slot scheduling |
+| Internal test 3 | ✅ Done | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
+| 1.0 | ✅ Released | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
+| 1.1 | ✅ Released | Refinement and launch readiness: multiple timetables, AI deletion with undo, faster timetable recognition, abbreviation search, music and voice input, onboarding and manual, AI usage limits and compliance |
 
 ### Team
 

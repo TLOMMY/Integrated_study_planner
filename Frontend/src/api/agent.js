@@ -18,6 +18,8 @@ export const agentApi = {
   // 非流式兜底（浏览器不支持 ReadableStream 时）
   chatSync: (id, message) => http.post(`/ai/conversations/${id}/chat/sync`, { message }, { timeout: 300000 }),
   apply: (payload) => http.post('/ai/proposals/apply', payload, { timeout: 30000 }),
+  // 撤销删除提案里已删除的条目：{ message_id, proposal_id, keys? }
+  undo: (payload) => http.post('/ai/proposals/undo', payload, { timeout: 30000 }),
 }
 
 /** 浏览器是否支持流式读取响应体。 */

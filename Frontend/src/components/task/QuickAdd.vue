@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Icon } from '@iconify/vue'
+import MicButton from '@/components/common/MicButton.vue'
 import { parseQuickAdd } from '@/utils/quickAdd'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
@@ -43,6 +44,7 @@ const submit = async () => {
         aria-label="快速添加任务"
         @keydown.enter.prevent="submit"
       />
+      <MicButton v-model="text" :maxlength="200" size="sm" />
       <button
         v-if="text.trim()"
         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary active:scale-95"

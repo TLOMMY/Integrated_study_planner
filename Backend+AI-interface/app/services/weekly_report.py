@@ -3,7 +3,7 @@
 每周学习报告：专注总时长与每日分布、完成任务数、科目分布、连续天数、与上周对比、获得的 XP 与成就。
 
 全部从流水现算（不缓存），过去的周数据不会再变化，本周的数据随学随更新。
-F 的"每周 AI 复盘"可直接调用 build_weekly_report 拿统计。
+"每周 AI 复盘"可直接调用 build_weekly_report 拿统计。
 """
 
 from datetime import date, timedelta

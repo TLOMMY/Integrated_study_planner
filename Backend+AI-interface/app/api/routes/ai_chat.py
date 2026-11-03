@@ -25,7 +25,8 @@ from app.core import timeutil
 from app.core.database import SessionLocal
 from app.core.errors import ApiError, ok
 from app.models import ChatConversation, ChatMessage, User
-from app.schemas import AgentChatIn, ConversationImportIn, ConversationIn, ConversationUpdateIn, ProposalApplyIn
+from app.schemas import (AgentChatIn, ConversationImportIn, ConversationIn, ConversationUpdateIn, ProposalApplyIn,
+                         ProposalUndoIn)
 from app.services import gamification
 from app.services.tasks import plan_to_dict
 
@@ -53,7 +54,7 @@ def message_to_dict(message: ChatMessage) -> dict:
         "conversation_id": message.conversation_id,
         "role": message.role,
         "content": message.content or "",
-        "meta": agent.load_meta(message),
+        "meta": agent.public_meta(agent.load_meta(message)),
         "created_at": message.created_at.isoformat() if message.created_at else None,
     }
 
@@ -188,6 +189,16 @@ def _save_assistant(db, user_id: int, conversation_id: int, state: agent.TurnSta
     return message
 
 
+def _check_ai_quota(db, user: User) -> None:
+    """使用服务器 Key 且今日额度已用完时，在保存消息前直接返回 429（而不是 200 的事件流里报错）。"""
+    from app.ai import providers
+    from app.services import ai_quota
+
+    config = providers.resolve(db, user)
+    if config is not None and config.quota_ticket:
+        ai_quota.ensure_available(db, user)
+
+
 def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False, default=str)}\n\n"
 
@@ -202,6 +213,7 @@ def _new_state(conversation: ChatConversation) -> agent.TurnState:
              summary="发送消息（SSE 流式）：status / reasoning / text / tool / proposal / error / done")
 def chat_stream(conversation_id: int, payload: AgentChatIn, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
+    _check_ai_quota(db, user)
     user_message = _save_user_message(db, user, conversation, payload.message)
     user_id, user_payload = user.id, message_to_dict(user_message)
 
@@ -247,6 +259,7 @@ def chat_stream(conversation_id: int, payload: AgentChatIn, user: CurrentUser, d
 @router.post("/ai/conversations/{conversation_id}/chat/sync", summary="发送消息（非流式兜底）：一次返回完整回复")
 def chat_sync(conversation_id: int, payload: AgentChatIn, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
+    _check_ai_quota(db, user)
     user_message = _save_user_message(db, user, conversation, payload.message)
     state = _new_state(conversation)
     events = []
@@ -279,12 +292,26 @@ def apply_proposal(payload: ProposalApplyIn, user: CurrentUser, db: DB):
         db.refresh(plan)
     done = sum(1 for r in results if r["ok"])
     failed = len(results) - done
-    unit = {"tasks": "个任务", "courses": "门课程", "changes": "处修改"}[payload.kind]
+    unit = {"tasks": "个任务", "courses": "门课程", "changes": "处修改", "deletes": "项"}[payload.kind]
+    verb = "删除" if payload.kind == "deletes" else "导入"
     if done and not failed:
-        message = f"已导入 {done} {unit}"
+        message = f"已{verb} {done} {unit}"
     elif done:
-        message = f"已导入 {done} {unit}，{failed} 条未导入"
+        message = f"已{verb} {done} {unit}，{failed} 条未{verb}"
     else:
-        message = "全部未能导入，请查看每条的原因"
-    return ok({"results": results, "ok_count": done, "fail_count": failed,
+        message = f"全部未能{verb}，请查看每条的原因"
+    # 撤销快照只在结果写回了消息时可用（message_id 有效）
+    undoable = bool(payload.message_id and payload.proposal_id)
+    return ok({"results": agent.public_results(results, undoable), "ok_count": done, "fail_count": failed,
                "plan": plan_to_dict(plan) if plan is not None else None, "reward": reward}, message)
+
+
+@router.post("/ai/proposals/undo", summary="撤销 AI 删除：按消息里保存的快照恢复已删除的任务 / 课程（keys 为空则全部）")
+def undo_proposal(payload: ProposalUndoIn, user: CurrentUser, db: DB):
+    results = agent.undo_deletes(db, user, payload.message_id, payload.proposal_id, payload.keys)
+    db.commit()
+    done = sum(1 for r in results if r["ok"])
+    if not done:
+        raise ApiError(422, results[0]["reason"] if results else "没有可撤销的删除")
+    return ok({"results": results, "ok_count": done, "fail_count": len(results) - done},
+              f"已恢复 {done} 项" + (f"，{len(results) - done} 项无法恢复" if len(results) > done else ""))

@@ -16,6 +16,7 @@ from app.core import timeutil
 from app.core.errors import ApiError, ok
 from app.models import FocusRecord, StudyTask
 from app.schemas import TaskBatchIn, TaskChecklistIn, TaskIn, TaskListRenameIn, TaskUpdateIn
+from app.services import aliases
 from app.services import tasks as task_service
 
 router = APIRouter(prefix="/task", tags=["任务"])
@@ -41,10 +42,12 @@ def list_tasks(
     query = task_service.visible_tasks(
         db.query(StudyTask).options(joinedload(StudyTask.plan)).filter(StudyTask.user_id == user.id)
     )
-    if q and q.strip():
-        like = f"%{q.strip().replace('%', '').replace('_', '')}%"
-        query = query.filter(or_(StudyTask.title.ilike(like), StudyTask.subject.ilike(like), StudyTask.note.ilike(like),
-                                 StudyTask.tags.ilike(like), StudyTask.list_name.ilike(like)))
+    keyword = (q or "").strip()
+    if keyword:
+        # 课程简称 / 别名（高数 ↔ 高等数学）与按字顺序包含；SQL 先宽筛，下面再精确判断
+        columns = (StudyTask.title, StudyTask.subject, StudyTask.note, StudyTask.tags, StudyTask.list_name)
+        patterns = aliases.like_patterns(keyword) or ["%"]
+        query = query.filter(or_(*(column.ilike(p) for column in columns for p in patterns)))
     if plan_id is not None:
         query = query.filter(StudyTask.plan_id == plan_id)
     if list_name is not None:
@@ -72,6 +75,9 @@ def list_tasks(
         query = query.filter(StudyTask.due_date >= range_start.isoformat(), StudyTask.due_date <= range_end.isoformat())
 
     items = query.all()
+    if keyword:
+        items = [task for task in items if aliases.matches(keyword, (
+            task.title, task.subject, task.note, ",".join(task_service.task_tags(task)), task.list_name))]
     if tag:
         items = [task for task in items if tag in task_service.task_tags(task)]
     if view == "all":

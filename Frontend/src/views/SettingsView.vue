@@ -6,6 +6,7 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import ThemeSection from '@/components/settings/ThemeSection.vue'
 import AccountExtras from '@/components/settings/AccountExtras.vue'
 import MyFeedback from '@/components/settings/MyFeedback.vue'
+import AboutSection from '@/components/settings/AboutSection.vue'
 import ShotPicker from '@/components/admin/ShotPicker.vue'
 import ReminderSection from '@/components/settings/ReminderSection.vue'
 import FocusSection from '@/components/settings/FocusSection.vue'
@@ -13,6 +14,7 @@ import { feedbackApi, userApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { reminderEnabled, setReminderEnabled } from '@/composables/useClassReminder'
+import { startTour } from '@/composables/useOnboarding'
 
 const router = useRouter()
 const route = useRoute()
@@ -242,6 +244,20 @@ const toggleReminder = () => {
 
         <h2 class="mb-2 mt-5 px-1 text-xs font-black text-ink-mute">帮助与数据</h2>
         <div class="card divide-y divide-ink-line/60 overflow-hidden">
+          <!-- 使用手册 / 重新查看新手教程 -->
+          <RouterLink :to="{ name: 'manual' }" class="flex w-full items-center gap-3 px-4 py-3.5 text-left">
+            <Icon icon="lucide:book-open-text" width="20" class="text-xp" />
+            <span class="flex-1">
+              <span class="block text-sm font-semibold text-ink">使用手册</span>
+              <span class="block text-[11px] text-ink-mute">各功能怎么用、打卡规则、AI 规则引擎能听懂的写法</span>
+            </span>
+            <Icon icon="lucide:chevron-right" width="16" class="text-ink-mute" />
+          </RouterLink>
+          <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left" type="button" @click="startTour">
+            <Icon icon="lucide:signpost" width="20" class="text-success" />
+            <span class="flex-1 text-sm font-semibold text-ink">重新查看新手教程</span>
+            <Icon icon="lucide:chevron-right" width="16" class="text-ink-mute" />
+          </button>
           <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left" type="button" @click="sheet = 'feedback'">
             <Icon icon="lucide:message-square-warning" width="20" class="text-primary" />
             <span class="flex-1">
@@ -262,6 +278,7 @@ const toggleReminder = () => {
           </button>
         </div>
         <MyFeedback />
+        <AboutSection />
       </section>
 
       <!-- 学习时段偏好 -->

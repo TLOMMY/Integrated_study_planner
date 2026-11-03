@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useAiStore } from '@/stores/ai'
 import { useUiStore } from '@/stores/ui'
+import AiBadge from './AiBadge.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -65,7 +66,7 @@ const apply = async () => {
     <div class="flex items-center gap-2 border-b border-ink-line/60 bg-success-light/60 px-4 py-3">
       <Icon icon="lucide:book-open" width="18" class="text-success" />
       <div class="min-w-0">
-        <p class="text-sm font-black text-ink">新增课程 · {{ items.length }} 门</p>
+        <p class="flex items-center gap-1.5 text-sm font-black text-ink">新增课程 · {{ items.length }} 门<AiBadge /></p>
         <p class="text-[11px] text-ink-mute">每周固定上课，确认后加入课表（共 {{ totalWeeks }} 周、{{ periodCount }} 节）</p>
       </div>
     </div>

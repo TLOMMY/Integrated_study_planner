@@ -10,6 +10,7 @@ import TaskEditor from '@/components/task/TaskEditor.vue'
 import TaskSearch from '@/components/task/TaskSearch.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import HomeWidgets from '@/components/home/HomeWidgets.vue'
+import CheckinRule from '@/components/stats/CheckinRule.vue'
 import { useHomeStore } from '@/stores/home'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
@@ -223,10 +224,16 @@ onActivated(() => tasks.loaded && load())
             {{ s?.greeting || '你好' }}，{{ s?.user?.display_name || '同学' }}
           </h1>
         </div>
-        <RouterLink to="/statistics" class="flex items-center gap-1 rounded-2xl px-3 py-2" :class="streak?.active_today ? 'bg-flame-light text-flame' : 'bg-surface text-ink-mute shadow-soft'" aria-label="连续打卡">
-          <Icon icon="lucide:flame" width="20" :class="streak?.active_today && 'animate-flicker'" />
-          <span class="num text-lg font-black">{{ streak?.current ?? 0 }}</span>
-        </RouterLink>
+        <div class="flex flex-col items-end gap-1">
+          <RouterLink to="/statistics" class="flex items-center gap-1 rounded-2xl px-3 py-2" :class="streak?.active_today ? 'bg-flame-light text-flame' : 'bg-surface text-ink-mute shadow-soft'" :aria-label="`连续打卡 ${streak?.current ?? 0} 天，${streak?.active_today ? '今天已打卡' : '今天还没打卡'}`">
+            <Icon icon="lucide:flame" width="20" :class="streak?.active_today && 'animate-flicker'" />
+            <span class="num text-lg font-black">{{ streak?.current ?? 0 }}</span>
+          </RouterLink>
+          <!-- 今天是否已打卡 + 打卡规则 ⓘ -->
+          <span class="flex items-center text-[10px] font-bold" :class="streak?.active_today ? 'text-flame' : 'text-ink-mute'">
+            {{ streak?.active_today ? '今日已打卡' : '今日未打卡' }}<CheckinRule :streak="streak" />
+          </span>
+        </div>
       </header>
 
       <!-- 右栏（桌面） -->
@@ -263,7 +270,7 @@ onActivated(() => tasks.loaded && load())
       <!-- 断火提醒 -->
       <RouterLink v-if="streak?.at_risk" :to="{ name: 'focus' }" class="mt-3 flex items-center gap-3 rounded-2xl border border-flame/30 bg-flame-light px-4 py-3">
         <Icon icon="lucide:flame" width="22" class="shrink-0 text-flame animate-flicker" />
-        <p class="flex-1 text-xs font-semibold text-ink-soft">已连续学习 <b class="text-flame">{{ streak.current }}</b> 天，今天还没打卡，专注一会儿保住火苗吧</p>
+        <p class="flex-1 text-xs font-semibold text-ink-soft">已连续学习 <b class="text-flame">{{ streak.current }}</b> 天，今天还没打卡：专注满 {{ streak.rule?.min_focus_minutes ?? 5 }} 分钟或完成 1 个任务就能保住火苗</p>
         <Icon icon="lucide:chevron-right" width="16" class="text-flame" />
       </RouterLink>
 

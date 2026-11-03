@@ -5,8 +5,11 @@ import BottomSheet from '@/components/common/BottomSheet.vue'
 import { aiApi, timetableApi } from '@/api'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
+import AiBadge from '@/components/ai/AiBadge.vue'
+import { friendlyLabel, modelLabel } from '@/utils/aiModels'
 
-const props = defineProps({ open: { type: Boolean, default: false } })
+// target：'new' 时预览后默认"新建一套课表"（从课表管理的"导入为新课表"进入）
+const props = defineProps({ open: { type: Boolean, default: false }, target: { type: String, default: 'current' } })
 const emit = defineEmits(['close'])
 
 const timetable = useTimetableStore()
@@ -46,6 +49,7 @@ watch(
     preview.value = null
     origin.value = null
     pasted.value = ''
+    aiError.value = null
     if (tab.value === 'ai') loadProviders()
   },
 )
@@ -105,9 +109,81 @@ const parsePasted = () => {
   runPreview(() => timetableApi.importWeb(file, 'preview'), 'web', file)
 }
 
-const pickAi = (event) => {
+// ---------------------------------------------------------------- AI 识别：阶段提示与失败原因
+const aiStage = ref('') // upload | read | model | slow
+const aiElapsed = ref(0)
+const aiError = ref(null) // { title, message, tips[] }
+let aiTimer = null
+const AI_STAGES = {
+  upload: '正在上传文件…',
+  read: '正在读取文件（PDF 先提取文字）…',
+  model: 'AI 正在识别课程，通常 5-30 秒…',
+  slow: '仍在识别，图片或复杂课表可能需要 1 分钟左右…',
+}
+const RECOGNIZE_TIMEOUT_S = 150
+
+const describeAiError = (error, file, elapsed) => {
+  const reason = error?.data?.reason
+  const isPdf = /\.pdf$/i.test(file?.name || '') || file?.type === 'application/pdf'
+  if (reason === 'no_vision') {
+    return {
+      title: '当前模型不能识别图片',
+      message: error.message,
+      tips: error.data?.source === 'pdf-image'
+        ? ['这个 PDF 提取不到文字（扫描件 / 截图转的 PDF），只能按图片识别', '从教务系统直接导出或"打印为 PDF"的文字版 PDF 可以用 DeepSeek 识别']
+        : ['DeepSeek 只能读文字，图片需要支持视觉的模型', '也可以改用「教务网页」或「Excel 文件」导入'],
+    }
+  }
+  if (reason === 'timeout' || error?.status === 504 || (error?.status === 0 && elapsed >= RECOGNIZE_TIMEOUT_S - 5)) {
+    return {
+      title: '识别超时',
+      message: reason === 'timeout' ? error.message : `等了 ${elapsed} 秒仍没有结果，模型服务可能繁忙。`,
+      tips: ['稍后重试一次', '图片裁剪到只剩课表区域会快很多', '文字版 PDF 比图片快且更准'],
+    }
+  }
+  if (reason === 'no_courses') {
+    return {
+      title: '没有识别出课程',
+      message: error.message,
+      tips: isPdf ? ['确认 PDF 是课表本身（含星期和节次）', '可以换成课表截图，或改用「教务网页」导入'] : ['截图要包含完整的星期表头和节次列', '避免反光、倾斜，或改用文字版 PDF'],
+    }
+  }
+  if (reason === 'no_model') return { title: '还没有可用的大模型', message: error.message, tips: ['在「AI 设置」中添加一个模型后再试'] }
+  if (error?.status === 0) return { title: '连接中断', message: error.message || '无法连接服务器', tips: ['检查网络后重试'] }
+  return { title: '识别失败', message: error?.message || '识别失败，请重试', tips: reason === 'bad_output' ? ['换一张更清晰的图片，或重试一次'] : [] }
+}
+
+const pickAi = async (event) => {
   const file = takeFile(event)
-  if (file) runPreview(() => timetableApi.recognize(file, providerId.value || null), 'ai', file)
+  if (!file) return
+  aiError.value = null
+  aiStage.value = 'upload'
+  aiElapsed.value = 0
+  const started = Date.now()
+  aiTimer = setInterval(() => {
+    aiElapsed.value = Math.round((Date.now() - started) / 1000)
+    // 上传进度事件不一定触发（部分 WebView）：3 秒后按"识别中"显示
+    if (['upload', 'read'].includes(aiStage.value) && aiElapsed.value >= 3) aiStage.value = 'model'
+    if (aiStage.value === 'model' && aiElapsed.value >= 35) aiStage.value = 'slow'
+  }, 1000)
+  const onUpload = (e) => {
+    if (e.total && e.loaded >= e.total && aiStage.value === 'upload') {
+      aiStage.value = 'read'
+      setTimeout(() => aiStage.value === 'read' && (aiStage.value = 'model'), 1200)
+    }
+  }
+  busy.value = true
+  try {
+    preview.value = await timetableApi.recognize(file, providerId.value || null, onUpload)
+    origin.value = { kind: 'ai', file }
+    selected.value = new Set(preview.value.courses.map((_, i) => i))
+  } catch (error) {
+    aiError.value = describeAiError(error, file, Math.round((Date.now() - started) / 1000))
+  } finally {
+    clearInterval(aiTimer)
+    aiStage.value = ''
+    busy.value = false
+  }
 }
 
 // ---------------------------------------------------------------- 教务系统地址与书签小工具
@@ -166,12 +242,22 @@ const loadProviders = async () => {
 const providerOptions = computed(() => {
   const s = aiSettings.value
   if (!s) return []
-  const options = [{ value: '', label: `当前启用：${s.resolved?.label || '未选择'}` }]
-  if (s.env?.configured) options.push({ value: 'env', label: `${s.env.name} · ${s.env.model}（仅文字版 PDF）${s.active === 'auto' ? ' · 使用中' : ''}` })
-  s.providers.forEach((p) => options.push({ value: String(p.id), label: `${p.name} · ${p.model}${p.active ? ' · 使用中' : ''}` }))
+  const options = [{ value: '', label: `跟随 AI 助手：${friendlyLabel(s.resolved?.label) || '未选择'}` }]
+  if (s.env?.configured) options.push({ value: 'env', label: `${s.env.name}（仅文字版 PDF）${s.active === 'auto' ? ' · 使用中' : ''}` })
+  s.providers.forEach((p) => options.push({ value: String(p.id), label: `${p.name} · ${modelLabel(p.model)}${p.active ? ' · 使用中' : ''}` }))
   return options
 })
 const usingRule = computed(() => aiSettings.value && !providerId.value && aiSettings.value.resolved?.provider === 'rule')
+// 识别实际使用的模型（与 AI 对话是同一套配置；服务器 DeepSeek 默认换 Flash 并关闭思考，见后端 import_label）
+const recognizeModel = computed(() => {
+  const s = aiSettings.value
+  if (!s) return ''
+  if (!providerId.value) return s.import_label || ''
+  if (providerId.value === 'env') return s.env_import_label || ''
+  const p = s.providers.find((x) => String(x.id) === providerId.value)
+  return p ? `${p.name} · ${modelLabel(p.model)}` : ''
+})
+const textOnlyModel = computed(() => /deepseek/i.test(recognizeModel.value))
 
 // ---------------------------------------------------------------- 勾选与导入
 const groupState = (group) => {
@@ -190,11 +276,26 @@ const toggleItem = (index) => {
   selected.value = next
 }
 
+// ---------------------------------------------------------------- 导入到哪套课表
+const importTarget = ref('current') // current 替换当前课表 / new 新建一套
+const newSetName = ref('')
+const activeSetName = computed(() => timetable.sets.active_name || '我的课表')
+const defaultSetName = computed(() => (preview.value?.file_name || '').replace(/\.[^.]+$/, '').slice(0, 40) || preview.value?.semester || '')
+watch(preview, (value) => {
+  if (!value) return
+  importTarget.value = props.target === 'new' ? 'new' : 'current'
+  newSetName.value = defaultSetName.value
+})
+const targetPayload = () => (importTarget.value === 'new'
+  ? { target: 'new', setName: newSetName.value.trim() || defaultSetName.value }
+  : { target: 'current' })
+
 const submit = () => {
   const indexes = [...selected.value].sort((a, b) => a - b)
   const { kind, file } = origin.value
-  if (kind === 'file') return timetableApi.importFile(file, 'commit', indexes)
-  if (kind === 'web') return timetableApi.importWeb(file, 'commit', indexes)
+  const target = targetPayload()
+  if (kind === 'file') return timetableApi.importFile(file, 'commit', indexes, target)
+  if (kind === 'web') return timetableApi.importWeb(file, 'commit', indexes, target)
   // AI 识别结果：直接提交预览里勾选的课程，不再调用模型
   const p = preview.value
   return timetableApi.commitCourses({
@@ -204,14 +305,19 @@ const submit = () => {
     total_weeks: p.total_weeks,
     file_name: p.file_name,
     fail_count: p.skipped.length,
+    target: target.target,
+    set_name: target.setName,
   })
 }
 
 const commit = async () => {
   if (!selected.value.size) return ui.toast('请至少勾选一门课程', 'warning')
+  const toNew = importTarget.value === 'new'
   const ok = await ui.confirm({
     title: '导入课表',
-    message: `将导入 ${selected.value.size} 门课程，并替换「${preview.value.semester}」学期已有的课程。`,
+    message: toNew
+      ? `将新建课表「${newSetName.value.trim() || defaultSetName.value || '导入的课表'}」，导入 ${selected.value.size} 门课程并切换过去。原来的课表会保留，可随时切回。`
+      : `将导入 ${selected.value.size} 门课程，并替换当前课表「${activeSetName.value}」里已有的课程。`,
     confirmText: '导入',
   })
   if (!ok) return
@@ -324,14 +430,35 @@ const back = () => {
             <option v-if="!aiSettings" value="">正在读取模型设置…</option>
             <option v-for="option in providerOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
           </select>
-          <p v-if="usingRule" class="mt-1.5 text-[11px] text-flame">当前是本地规则引擎，无法识别图片，请先在 AI 设置中添加大模型。</p>
+          <p v-if="usingRule" class="mt-1.5 flex items-start gap-1 text-[11px] text-flame">
+            <span class="flex-1">当前是本地规则引擎，无法识别图片，请先在 AI 设置中添加大模型。</span>
+            <!-- 手册里说明哪些模型能识别图片 / PDF，以及规则引擎能做什么 -->
+            <RouterLink :to="{ name: 'manual', hash: '#import-ai' }" class="-my-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full hover:bg-flame-light" aria-label="哪些模型能识别图片和 PDF" title="哪些模型能识别图片和 PDF" @click="emit('close')"><Icon icon="lucide:circle-help" width="14" /></RouterLink>
+          </p>
+          <p v-else-if="recognizeModel" class="mt-1.5 flex flex-wrap items-center gap-1 text-[11px] text-ink-soft">
+            <Icon icon="lucide:cpu" width="12" class="shrink-0 text-primary" />使用：<b class="text-ink">{{ recognizeModel }}</b>
+            <span class="text-ink-mute">· 与 AI 助手同一套模型配置，识别时关闭思考以加快速度</span>
+          </p>
+          <p v-if="textOnlyModel" class="mt-1 text-[11px] text-flame">DeepSeek 不支持图片：能识别文字版 PDF；截图、照片和扫描版 PDF 需要支持视觉的模型。</p>
         </div>
 
-        <button class="flex w-full flex-col items-center gap-2 rounded-3xl border-2 border-dashed border-primary/30 bg-primary-light/50 px-4 py-8 text-primary transition hover:bg-primary-light" type="button" :disabled="busy" @click="aiInput.click()">
+        <button class="flex w-full flex-col items-center gap-2 rounded-3xl border-2 border-dashed border-primary/30 bg-primary-light/50 px-4 py-8 text-primary transition hover:bg-primary-light" type="button" :disabled="busy" :aria-busy="busy" @click="aiInput.click()">
           <Icon :icon="busy ? 'lucide:loader-circle' : 'lucide:scan-text'" width="36" :class="busy && 'animate-spin'" />
-          <span class="text-sm font-black">{{ busy ? 'AI 正在识别，约需 10-60 秒…' : '选择课表截图 / 照片 / PDF' }}</span>
-          <span class="text-xs text-ink-soft">识别结果会先给你核对，确认后才导入</span>
+          <span class="text-sm font-black" aria-live="polite">{{ busy ? AI_STAGES[aiStage] || 'AI 正在识别…' : '选择课表截图 / 照片 / PDF' }}</span>
+          <span class="num text-xs text-ink-soft">{{ busy ? `已用 ${aiElapsed} 秒 · 最长等待 ${RECOGNIZE_TIMEOUT_S} 秒` : '识别结果会先给你核对，确认后才导入' }}</span>
         </button>
+
+        <div v-if="aiError && !busy" class="rounded-3xl border border-danger/30 bg-danger-light/60 p-4 text-xs leading-5" role="alert">
+          <p class="flex items-center gap-1.5 text-sm font-black text-danger"><Icon icon="lucide:circle-x" width="16" class="shrink-0" />{{ aiError.title }}</p>
+          <p class="mt-1 text-ink-soft">{{ aiError.message }}</p>
+          <ul v-if="aiError.tips.length" class="mt-1.5 space-y-0.5 text-ink-soft">
+            <li v-for="tip in aiError.tips" :key="tip">· {{ tip }}</li>
+          </ul>
+          <div class="mt-2 flex gap-2">
+            <button class="btn-ghost px-3 py-1.5 text-xs" type="button" @click="aiInput.click()"><Icon icon="lucide:refresh-cw" width="14" />重新选择文件</button>
+            <button class="btn-ghost px-3 py-1.5 text-xs" type="button" @click="aiError = null">知道了</button>
+          </div>
+        </div>
 
         <div class="rounded-3xl bg-background p-4 text-xs leading-6 text-ink-soft">
           <p class="font-bold text-ink">识别小贴士</p>
@@ -345,7 +472,7 @@ const back = () => {
     <div v-else class="space-y-3 pb-2">
       <div v-if="preview.format === 'ai'" class="flex items-start gap-2 rounded-2xl bg-xp-light p-3 text-xs leading-5 text-ink-soft">
         <Icon icon="lucide:sparkles" width="16" class="mt-0.5 shrink-0 text-xp" />
-        <p>由 <b class="text-ink">{{ preview.model }}</b> 识别{{ preview.source === 'pdf-text' ? '（PDF 文字）' : '' }}，可能有误差，请逐门核对后再导入。</p>
+        <p><AiBadge class="mr-1" />由 <b class="text-ink">{{ friendlyLabel(preview.model) }}</b> 识别{{ preview.source === 'pdf-text' ? '（PDF 文字）' : '' }}，可能有误差，请逐门核对后再导入。</p>
       </div>
 
       <div class="grid grid-cols-3 gap-2 text-center">
@@ -388,6 +515,22 @@ const back = () => {
       <div v-if="preview.skipped.length" class="rounded-2xl bg-flame-light p-3 text-xs text-ink-soft">
         <p class="mb-1 font-bold text-flame">以下 {{ preview.skipped.length }} 项未导入</p>
         <p v-for="(item, i) in preview.skipped" :key="i">· {{ item.name }}：{{ item.reason }}</p>
+      </div>
+
+      <!-- 导入到当前课表 / 新建一套 -->
+      <div class="space-y-2">
+        <p class="label">导入到</p>
+        <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="导入到哪套课表">
+          <button type="button" role="radio" :aria-checked="importTarget === 'current'" class="rounded-2xl border p-3 text-left" :class="importTarget === 'current' ? 'border-primary bg-primary-light' : 'border-ink-line'" @click="importTarget = 'current'">
+            <p class="text-sm font-bold text-ink">当前课表</p>
+            <p class="mt-0.5 truncate text-[11px] text-ink-mute">替换「{{ activeSetName }}」的课程</p>
+          </button>
+          <button type="button" role="radio" :aria-checked="importTarget === 'new'" class="rounded-2xl border p-3 text-left" :class="importTarget === 'new' ? 'border-primary bg-primary-light' : 'border-ink-line'" @click="importTarget = 'new'">
+            <p class="text-sm font-bold text-ink">新建一套</p>
+            <p class="mt-0.5 text-[11px] text-ink-mute">原课表保留，可随时切回</p>
+          </button>
+        </div>
+        <input v-if="importTarget === 'new'" v-model="newSetName" class="field" maxlength="40" placeholder="新课表名称，如 大二下" aria-label="新课表名称" />
       </div>
     </div>
 

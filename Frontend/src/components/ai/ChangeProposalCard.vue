@@ -4,6 +4,7 @@ import { computed, reactive, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useAiStore } from '@/stores/ai'
 import { useUiStore } from '@/stores/ui'
+import AiBadge from './AiBadge.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -45,7 +46,7 @@ const apply = async () => {
     <div class="flex items-center gap-2 border-b border-ink-line/60 bg-flame-light/60 px-4 py-3">
       <Icon icon="lucide:git-compare" width="18" class="text-flame" />
       <div class="min-w-0">
-        <p class="text-sm font-black text-ink">修改已有内容 · {{ items.length }} 项</p>
+        <p class="flex items-center gap-1.5 text-sm font-black text-ink">修改已有内容 · {{ items.length }} 项<AiBadge label="AI 建议" /></p>
         <p class="truncate text-[11px] text-ink-mute">{{ proposal.summary || '确认后才会修改，可以逐条取消' }}</p>
       </div>
     </div>

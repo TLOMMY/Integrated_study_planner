@@ -18,7 +18,7 @@ export const setReminderEnabled = async (value) => {
 }
 
 /**
- * 课前提醒（对标 WakeUp）：页面打开期间，上课前 10 分钟弹出提醒；
+ * 课前提醒：页面打开期间，上课前 10 分钟弹出提醒；
  * 已授权浏览器通知时同时发送系统通知。每节课每天只提醒一次。
  */
 export function useClassReminder() {

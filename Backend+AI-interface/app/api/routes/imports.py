@@ -35,7 +35,8 @@ def _read_upload(file: UploadFile) -> bytes:
     return content
 
 
-def _file_import(parser: Callable, user, db, file: UploadFile, mode: str, replace: bool, selected: Optional[str]):
+def _file_import(parser: Callable, user, db, file: UploadFile, mode: str, replace: bool, selected: Optional[str],
+                 target: str = "current", set_name: Optional[str] = None):
     """Excel 与网页导入共用：解析 → 预览；commit 时按 selected 过滤后写库。"""
     content = _read_upload(file)
     result = parser(file.filename or "", content, user)
@@ -51,9 +52,14 @@ def _file_import(parser: Callable, user, db, file: UploadFile, mode: str, replac
     data["reward"] = import_common.commit_courses(
         db, user, semester=data["semester"], courses=chosen, replace=replace,
         semester_start=result.semester_start, total_weeks=result.total_weeks,
-        file_name=file.filename, fail_count=len(result.skipped),
+        file_name=file.filename, fail_count=len(result.skipped), target=target, set_name=set_name,
     )
     return ok(data, f"已导入 {len(chosen)} 门课程")
+
+
+# 导入到当前课表，或新建一套课表
+ImportTarget = Literal["current", "new"]
+_TARGET_DOC = "current 导入到当前课表 / new 新建一套课表并切换过去"
 
 
 @router.post("/timetable", summary="导入课表文件：mode=preview 只解析，mode=commit 写入（selected 指定导入哪几门）")
@@ -64,8 +70,10 @@ def import_timetable(
     mode: Literal["preview", "commit"] = "preview",
     replace: bool = True,
     selected: Optional[str] = Form(default=None, description="逗号分隔的预览序号；不传则全部导入"),
+    target: ImportTarget = Form(default="current", description=_TARGET_DOC),
+    set_name: Optional[str] = Form(default=None, max_length=40, description="target=new 时新课表的名称"),
 ):
-    return _file_import(parse_timetable, user, db, file, mode, replace, selected)
+    return _file_import(parse_timetable, user, db, file, mode, replace, selected, target, set_name)
 
 
 @router.post("/timetable/web", summary="从教务系统网页导入：上传保存的 .html/.mhtml，或把粘贴的源代码/JSON 作为文件上传")
@@ -76,23 +84,28 @@ def import_timetable_web(
     mode: Literal["preview", "commit"] = "preview",
     replace: bool = True,
     selected: Optional[str] = Form(default=None, description="逗号分隔的预览序号；不传则全部导入"),
+    target: ImportTarget = Form(default="current", description=_TARGET_DOC),
+    set_name: Optional[str] = Form(default=None, max_length=40, description="target=new 时新课表的名称"),
 ):
-    return _file_import(parse_web_timetable, user, db, file, mode, replace, selected)
+    return _file_import(parse_web_timetable, user, db, file, mode, replace, selected, target, set_name)
 
 
 # ---------------------------------------------------------------- AI 识别
 def _ai_config(db, user, provider_id: Optional[str]) -> ModelConfig:
+    """与 AI 对话用同一套模型配置；服务器 DeepSeek 默认换成 Flash（识别时一律关闭思考，见 vision._call）。"""
     choice = (provider_id or "").strip()
     if choice in ("", "auto", "active"):
         config = providers.resolve(db, user)
         if config is None:
-            raise ApiError(422, "当前使用的是本地规则引擎，无法识别图片：请在 AI 设置中添加并选择一个大模型")
-        return config
+            raise ApiError(422, "当前使用的是本地规则引擎，无法识别图片：请在 AI 设置中添加并选择一个大模型",
+                           {"reason": "no_model"})
+        return providers.extraction_config(config, user)
     if choice == "env":
-        config = providers.env_config()
+        # 服务器 Key 计入每日 AI 额度
+        config = providers.ai_quota.attach(providers.env_config(model=providers.env_model_choice(user)), user)
         if config is None:
-            raise ApiError(422, "服务器没有配置 DeepSeek，请选择你自己添加的模型")
-        return config
+            raise ApiError(422, "服务器没有配置 DeepSeek，请选择你自己添加的模型", {"reason": "no_model"})
+        return providers.extraction_config(config, user)
     if choice.isdigit():
         provider = providers.get_owned(db, user, int(choice))
         if provider is None:
@@ -139,6 +152,9 @@ class ImportCommitIn(BaseModel):
     replace: bool = True
     file_name: Optional[str] = Field(default=None, max_length=200)
     fail_count: int = Field(default=0, ge=0, le=1000)
+    # current 导入到当前课表 / new 新建一套课表
+    target: Literal["current", "new"] = "current"
+    set_name: Optional[str] = Field(default=None, max_length=40)
 
 
 @router.post("/timetable/commit", summary="提交预览中的课程（AI 识别结果），服务器重新校验后写入")
@@ -157,7 +173,7 @@ def commit_timetable(payload: ImportCommitIn, user: CurrentUser, db: DB):
     reward = import_common.commit_courses(
         db, user, semester=semester, courses=preview, replace=payload.replace,
         semester_start=payload.semester_start, total_weeks=payload.total_weeks,
-        file_name=payload.file_name, fail_count=payload.fail_count,
+        file_name=payload.file_name, fail_count=payload.fail_count, target=payload.target, set_name=payload.set_name,
     )
     return ok({"semester": semester, "courses": preview, "success_count": len(preview), "reward": reward},
               f"已导入 {len(preview)} 门课程")

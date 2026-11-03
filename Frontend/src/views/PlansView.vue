@@ -58,18 +58,34 @@ onMounted(() => load())
 
 <template>
   <div class="flex h-full flex-col">
-    <header class="glass-bar flex shrink-0 items-center gap-3 bg-surface px-4 pb-3 pt-[calc(var(--safe-top)+16px)] lg:px-10 lg:pt-6">
-      <button class="icon-btn lg:hidden" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
-      <h1 class="flex-1 text-lg font-black text-ink lg:text-[22px]">学习计划</h1>
-      <button class="icon-btn bg-primary text-on-primary" type="button" aria-label="新建计划" @click="editor = { open: true, plan: null }"><Icon icon="lucide:plus" width="20" /></button>
+    <header class="glass-bar shrink-0 bg-surface px-4 pb-1 pt-[calc(var(--safe-top)+16px)] lg:px-10 lg:pt-6">
+      <div class="desk-page flex items-center gap-3">
+        <button class="icon-btn lg:hidden" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
+        <h1 class="flex-1 text-lg font-black text-ink lg:text-[22px]">学习计划</h1>
+        <button class="icon-btn bg-primary text-on-primary" type="button" aria-label="新建计划" @click="editor = { open: true, plan: null }"><Icon icon="lucide:plus" width="20" /></button>
+      </div>
     </header>
 
-    <nav class="scrollbar-hide flex shrink-0 gap-2 overflow-x-auto bg-surface px-4 pb-3 lg:border-b lg:border-ink-line/70 lg:px-10">
-      <button v-for="f in FILTERS" :key="f.key" class="chip shrink-0" :class="plans.filter === f.key && 'chip-active'" type="button" @click="load(f.key)">
-        <Icon v-if="f.key === 'trash'" icon="lucide:trash-2" width="13" />{{ f.label }}<span v-if="f.key !== 'all' && plans.counts[f.key]" class="num">{{ plans.counts[f.key] }}</span>
-      </button>
+    <!-- 分段标签——与标题拉开距离，手机上五项等宽铺满不被截断，电脑上与内容区对齐 -->
+    <nav class="shrink-0 bg-surface px-4 pb-3 pt-3 lg:border-b lg:border-ink-line/70 lg:px-10 lg:pb-4" aria-label="计划状态">
+      <div class="desk-page">
+        <div class="grid grid-cols-5 gap-1 rounded-2xl bg-background p-1 lg:inline-grid lg:min-w-[520px]" role="tablist">
+          <button
+            v-for="f in FILTERS"
+            :key="f.key"
+            type="button"
+            role="tab"
+            :aria-selected="plans.filter === f.key"
+            class="flex min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl px-1 py-2 text-xs font-bold transition"
+            :class="plans.filter === f.key ? 'bg-surface text-primary shadow-soft' : 'text-ink-soft'"
+            @click="load(f.key)"
+          >
+            <Icon v-if="f.key === 'trash'" icon="lucide:trash-2" width="13" class="shrink-0" />{{ f.label }}<span v-if="f.key !== 'all' && plans.counts[f.key]" class="num text-[11px] opacity-70">{{ plans.counts[f.key] }}</span>
+          </button>
+        </div>
+      </div>
     </nav>
-    <div v-if="hint || inTrash" class="shrink-0 bg-surface px-4 pb-3 lg:px-10">
+    <div v-if="hint || inTrash" class="shrink-0 bg-surface px-4 pb-3 lg:px-10"><div class="desk-page">
       <p v-if="hint" class="flex items-start gap-1.5 rounded-2xl bg-background px-3 py-2 text-[11px] leading-5 text-ink-soft"><Icon icon="lucide:info" width="13" class="mt-0.5 shrink-0 text-primary" />{{ hint }}</p>
       <div v-if="inTrash && plans.items.length" class="mt-2 flex items-center gap-2">
         <button class="chip" type="button" @click="pickAll"><Icon :icon="allPicked ? 'lucide:square-check' : 'lucide:square'" width="14" />全选</button>
@@ -78,7 +94,7 @@ onMounted(() => load())
         <button class="chip border-danger/40 text-danger" type="button" :disabled="!picked.size" :class="!picked.size && 'opacity-40'" @click="purge"><Icon icon="lucide:trash-2" width="14" />彻底删除</button>
         <button class="chip border-danger bg-danger text-on-danger" type="button" @click="emptyTrash">清空</button>
       </div>
-    </div>
+    </div></div>
 
     <div class="scrollbar-hide flex-1 space-y-3 overflow-y-auto px-4 pb-24 pt-4 lg:grid lg:grid-cols-2 lg:content-start lg:gap-4 lg:space-y-0 lg:px-10 lg:pb-10 lg:pt-6 xl:grid-cols-3">
       <div v-if="plans.loading" class="space-y-3 lg:col-span-full"><div v-for="i in 3" :key="i" class="skeleton h-28" /></div>

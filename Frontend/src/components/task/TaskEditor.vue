@@ -3,6 +3,7 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import MicButton from '@/components/common/MicButton.vue'
 import { planApi } from '@/api'
 import { useTasksStore } from '@/stores/tasks'
 import { useTimetableStore } from '@/stores/timetable'
@@ -259,7 +260,10 @@ const startFocus = () => {
 <template>
   <BottomSheet :open="open" :title="isEdit ? '编辑任务' : '新建任务'" @close="emit('close')">
     <form class="space-y-4" @submit.prevent="submit">
-      <input v-model="form.title" class="field text-base font-semibold" placeholder="准备做什么？" maxlength="200" autofocus />
+      <div class="flex items-center gap-2">
+        <input v-model="form.title" class="field min-w-0 flex-1 text-base font-semibold" placeholder="准备做什么？" maxlength="200" autofocus />
+        <MicButton v-model="form.title" :maxlength="200" />
+      </div>
 
       <div>
         <span class="label">日期</span>

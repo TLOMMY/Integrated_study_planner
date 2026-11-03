@@ -126,7 +126,59 @@ def repair_data(db: Session) -> None:
     for user in users.values():
         if not user.semester:
             user.semester = schedule.effective_semester(db, user)
+    db.flush()
+    backfill_timetable_sets(db, users)
     db.commit()
+
+
+def backfill_timetable_sets(db: Session, users: dict) -> None:
+    """
+    多套课表：还没归属任何一套的旧课程按学期分组建套。
+    当前学期那组叫"我的课表"并设为生效，其余学期各建一套（名称即学期名，不生效，学期设置沿用当前的，只改学期名），
+    保证升级后看到的课表与升级前完全一致，旧学期的课也不丢。可重复执行。
+    """
+    from app.models import Timetable, TimetableSet
+    from app.services import schedule
+
+    rows = (
+        db.query(Timetable.user_id, Timetable.semester)
+        .filter(Timetable.set_id.is_(None))
+        .distinct()
+        .all()
+    )
+    by_user: dict = {}
+    for uid, semester in rows:
+        by_user.setdefault(uid, set()).add(semester)
+    for uid, semesters in by_user.items():
+        user = users.get(uid)
+        if user is None:
+            continue
+        current = schedule.effective_semester(db, user)
+        sets = {s.semester: s for s in db.query(TimetableSet).filter(TimetableSet.user_id == uid)}
+        has_active = any(s.is_active for s in sets.values())
+        for semester in sorted(semesters, key=lambda s: (s != current, str(s or ""))):
+            target = sets.get(semester)
+            if target is None:
+                is_current = semester == current and not has_active
+                target = TimetableSet(user_id=uid, name=schedule.DEFAULT_SET_NAME if is_current else (semester or "旧课表")[:40],
+                                      is_active=is_current)
+                schedule.store_set_settings(db, user, target)
+                target.semester = semester or current
+                if is_current:
+                    has_active = True
+                db.add(target)
+                db.flush()
+                sets[semester] = target
+            db.query(Timetable).filter(
+                Timetable.user_id == uid, Timetable.set_id.is_(None),
+                Timetable.semester.is_(None) if semester is None else Timetable.semester == semester,
+            ).update({"set_id": target.id}, synchronize_session=False)
+        if not has_active:
+            # 有课的学期都不是当前学期：建一套空的"我的课表"生效，保持升级前的显示（当前学期为空）
+            empty = TimetableSet(user_id=uid, name=schedule.DEFAULT_SET_NAME, is_active=True)
+            schedule.store_set_settings(db, user, empty)
+            db.add(empty)
+    db.flush()
 
 
 def drop_legacy_tables(bind=None) -> list:

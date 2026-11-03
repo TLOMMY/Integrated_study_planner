@@ -31,7 +31,7 @@ export const growthApi = {
   freezes: () => http.get('/streak/freezes'),
   subjects: (days = 30) => http.get('/study/subjects', { params: { days } }),
   weeklyReport: (weekStart) => http.get('/study/weekly-report', { params: { week_start: weekStart || undefined } }),
-  // 每周 AI 复盘（代理 F 实现）：{week_start, week_end, stats, review_markdown, suggestions, provider, model, generated_at}
+  // 每周 AI 复盘：{week_start, week_end, stats, review_markdown, suggestions, provider, model, generated_at}
   aiReview: (weekStart, refresh = false) =>
     http.get('/ai/review/weekly', { params: { week_start: weekStart || undefined, refresh: refresh ? 1 : undefined }, timeout: 90000 }),
 }

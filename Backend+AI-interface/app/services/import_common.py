@@ -146,26 +146,34 @@ def select_indexes(courses: List[dict], selected: Optional[str]) -> List[dict]:
 
 def commit_courses(db: Session, user: User, *, semester: str, courses: List[dict], replace: bool = True,
                    semester_start: Optional[str] = None, total_weeks: Optional[int] = None,
-                   file_name: Optional[str] = None, fail_count: int = 0) -> dict:
+                   file_name: Optional[str] = None, fail_count: int = 0,
+                   target: str = "current", set_name: Optional[str] = None) -> dict:
     """
     写入课程（courses 需已包含 start_time / end_time / color，即 with_times 的结果），
     同步学期设置，记录导入日志并结算成就奖励。返回 reward。
+    target：current 导入到当前课表（replace 时先清空当前课表）；new 新建一套课表并切换过去。
     """
     if not courses:
         raise ApiError(422, "请至少勾选一门课程")
     if semester_start and timeutil.parse_date(semester_start) is None:
         raise ApiError(422, "开学日期格式不正确")
     tracker = gamification.RewardTracker(db, user)
+    if target == "new":
+        schedule.create_set(db, user, set_name or (file_name or "").rsplit(".", 1)[0][:40] or semester or "导入的课表",
+                            copy_settings=True, semester=semester, dedupe=True)
+    current = schedule.active_set(db, user, create=True)
+    if replace and target != "new":
+        schedule.course_query(db, user).delete(synchronize_session=False)
     user.semester = semester
     if semester_start:
         user.semester_start = semester_start
     if total_weeks:
         user.total_weeks = total_weeks
-    if replace:
-        db.query(Timetable).filter(Timetable.user_id == user.id, Timetable.semester == semester).delete()
+    schedule.store_set_settings(db, user, current)
     for item in courses:
         db.add(
             Timetable(
+                set_id=current.id,
                 user_id=user.id, semester=semester, course_name=item["course_name"], teacher=item["teacher"],
                 classroom=item["classroom"], day_of_week=item["day_of_week"], start_period=item["start_period"],
                 end_period=item["end_period"], start_time=item["start_time"], end_time=item["end_time"],

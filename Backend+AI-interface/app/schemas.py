@@ -22,6 +22,8 @@ class RegisterIn(_Base):
     username: Optional[str] = Field(default=None, min_length=3, max_length=50)
     # 邮箱验证码（选填；服务器开启 REQUIRE_EMAIL_VERIFY 时必填）
     code: Optional[str] = Field(default=None, max_length=10)
+    # 同意的隐私政策 / 用户协议版本（新版前端必传；选填，旧客户端不传也能注册）
+    agreed_terms_version: Optional[str] = Field(default=None, max_length=20)
 
 
 class LoginIn(_Base):
@@ -474,15 +476,17 @@ class AiSettingsIn(_Base):
 
     active: Optional[str] = Field(default=None, pattern=r"^(auto|rule|\d+)$")
     thinking: Optional[THINKING] = None
+    # 服务器 DeepSeek 下选用的模型
+    env_model: Optional[Literal["deepseek-flash", "deepseek-v4-pro"]] = None
 
     @model_validator(mode="after")
     def _something(self):
-        if self.active is None and self.thinking is None:
+        if self.active is None and self.thinking is None and self.env_model is None:
             raise ValueError("请选择要使用的模型或思考强度")
         return self
 
 
-# ---- B 后台与账号：邮箱验证码、找回密码、管理后台、前端错误上报
+# ---- 后台与账号：邮箱验证码、找回密码、管理后台、前端错误上报
 CODE_PATTERN = r"^\d{6}$"
 
 
@@ -528,6 +532,9 @@ class AdminSettingsIn(_Base):
     feedback_webhook_secret: Optional[str] = Field(default=None, max_length=200)
     feedback_notify_emails: Optional[str] = Field(default=None, max_length=500)
     public_url: Optional[str] = Field(default=None, max_length=200)
+    # 服务器 DeepSeek Key 的每用户每日上限（0 = 不限）
+    ai_daily_calls: Optional[int] = Field(default=None, ge=0, le=100000)
+    ai_daily_tokens: Optional[int] = Field(default=None, ge=0, le=1000000000)
 
     @field_validator("feedback_webhook", "public_url")
     @classmethod
@@ -557,7 +564,7 @@ class ClientErrorIn(_Base):
     client: Optional[str] = Field(default=None, max_length=500)
 
 
-# ---- A AI 智能体：服务器保存的对话、流式对话、提案（新任务 / 新课程 / 修改）确认导入
+# ---- AI 智能体：服务器保存的对话、流式对话、提案（新任务 / 新课程 / 修改）确认导入
 class ConversationIn(_Base):
     title: Optional[str] = Field(default=None, max_length=100)
 
@@ -577,7 +584,7 @@ class ProposalApplyIn(_Base):
     所以这里不做严格的字段校验（在 agent.apply_proposal 里逐条给出中文原因）。
     """
 
-    kind: Literal["tasks", "courses", "changes"]
+    kind: Literal["tasks", "courses", "changes", "deletes"]
     items: List[dict] = Field(min_length=1, max_length=200)
     # 新任务归入的学习计划：传 plan_id 时追加到该计划（重试失败条目时用），否则新建
     title: Optional[str] = Field(default=None, max_length=200)
@@ -600,7 +607,7 @@ class ConversationImportIn(_Base):
     messages: List[LegacyTurn] = Field(min_length=1, max_length=80)
 
 
-# ---- D 课表分享、考试倒计时、学习小组、专注跨设备同步
+# ---- 课表分享、考试倒计时、学习小组、专注跨设备同步
 class ExamIn(_Base):
     title: str = Field(min_length=1, max_length=100)
     subject: Optional[str] = Field(default=None, max_length=80)
@@ -621,10 +628,12 @@ class ExamUpdateIn(ExamIn):
 
 
 class ShareImportIn(_Base):
-    # merge：与已有课程合并（冲突的跳过）；replace：先清空本学期课程再导入
-    mode: Literal["merge", "replace"] = "merge"
+    # merge：与已有课程合并（冲突的跳过）；replace：先清空当前课表再导入；new：新建一套课表导入
+    mode: Literal["merge", "replace", "new"] = "merge"
     # 同时采用分享者的节次时间（两边作息不同时有用）
     use_period_times: bool = False
+    # mode=new 时新课表的名称，默认"<分享者>的课表"
+    set_name: Optional[str] = Field(default=None, max_length=40)
 
 
 class GroupIn(_Base):
@@ -647,3 +656,31 @@ class FocusStateIn(_Base):
     started_at: Optional[str] = Field(default=None, max_length=40)
     updated_at: int = Field(ge=0)
     device: Optional[str] = Field(default=None, max_length=60)
+
+
+# ---- AI 与导入：撤销 AI 删除
+class ProposalUndoIn(_Base):
+    """撤销删除提案里已删除的条目（按消息里保存的快照恢复）。keys 为空表示撤销全部。"""
+
+    message_id: int
+    proposal_id: str = Field(min_length=1, max_length=40)
+    keys: Optional[List[str]] = Field(default=None, max_length=200)
+
+
+# ---- 多套课表
+class TimetableSetIn(_Base):
+    name: str = Field(min_length=1, max_length=40)
+    # 沿用当前课表的学期名 / 开学日期 / 总周数 / 节次时间
+    copy_settings: bool = True
+    # 建好后立即切换过去
+    activate: bool = True
+
+
+class TimetableSetRenameIn(_Base):
+    name: str = Field(min_length=1, max_length=40)
+
+
+# ---- 新手教程
+class OnboardingIn(_Base):
+    # true：看完 / 跳过了新手教程；false：重置为未看过（下次登录会再次弹出）
+    done: bool = True

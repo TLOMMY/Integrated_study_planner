@@ -1,0 +1,144 @@
+{
+  "_comment": "本地规则引擎（Backend+AI-interface/app/ai/nlu.py + planner.py）能听懂的写法。使用手册直接渲染本文件；后端 tests/test_manual_templates.py 逐条断言这些例句的解析结果，改动解析规则或本文件时两边必须一致。expect 中：offset=起始日距“今天”的天数，days=天数（null 表示没说，由排程用默认值），prefer=时段，minutes=每天分钟数（null 表示没说），deadline=截止日距今天的天数。未写的字段按 prefer/minutes/days=null、intensity=1、exam=false 断言。",
+  "ref_date": "2026-10-21",
+  "ref_label": "以下例句的解析结果按「今天是 10 月 21 日（周三）」计算",
+  "groups": [
+    {
+      "id": "dates",
+      "title": "日期范围",
+      "patterns": [
+        "今天 / 今日 / 今晚（今晚 = 今天 + 晚上）",
+        "明天 / 明日 / 明晚 / 后天",
+        "周末（最近的周六、周日两天）",
+        "这周 / 本周 / 这个星期（从今天到周日；周六、周日说“这周”会顺延到下周日）",
+        "下周（下周一到下周日）",
+        "N 天 / N 周 / N 个星期 / 一个月（从今天起；如“两周内”“10 天”“一个月”）",
+        "明天起 / 明天开始 / 今天起 + 时长",
+        "10.24-11.1、10/24-11/1、10月24日到11月1日、11月1日-10日（省略结束月份）",
+        "11月3日起 5 天（某天开始 + 时长）",
+        "11月5号前 / 25号前（从今天排到那一天）"
+      ],
+      "examples": [
+        { "text": "今晚复习高数一个半小时", "expect": { "offset": 0, "days": 1, "prefer": "evening", "minutes": 90, "subjects": ["高等数学"] } },
+        { "text": "明天复习英语 90 分钟", "expect": { "offset": 1, "days": 1, "minutes": 90, "subjects": ["英语"] } },
+        { "text": "后天上午复习概率论两小时", "expect": { "offset": 2, "days": 1, "prefer": "morning", "minutes": 120, "subjects": ["概率论"] } },
+        { "text": "周末复习线代，每天三小时", "expect": { "offset": 3, "days": 2, "minutes": 180, "subjects": ["线性代数"] } },
+        { "text": "这周每天两小时复习高数和英语，晚上学", "expect": { "offset": 0, "days": 5, "prefer": "evening", "minutes": 120, "subjects": ["高等数学", "英语"] } },
+        { "text": "下周每天一小时复习英语", "expect": { "offset": 5, "days": 7, "minutes": 60, "subjects": ["英语"] } },
+        { "text": "未来 10 天每天 2 小时复习高数", "expect": { "offset": 0, "days": 10, "minutes": 120, "subjects": ["高等数学"] } },
+        { "text": "明天起 5 天，每天 1 小时复习线代", "expect": { "offset": 1, "days": 5, "minutes": 60, "subjects": ["线性代数"] } },
+        { "text": "11月1日到11月10日每天一小时复习高数", "expect": { "offset": 11, "days": 10, "minutes": 60, "subjects": ["高等数学"] } },
+        { "text": "10.24-11.1 复习线代", "expect": { "offset": 3, "days": 9, "subjects": ["线性代数"] } },
+        { "text": "11月3日起 5 天复习英语", "expect": { "offset": 13, "days": 5, "subjects": ["英语"] } },
+        { "text": "11月5号前复习完概率论", "expect": { "offset": 0, "days": 16, "deadline": 15, "subjects": ["概率论"] } }
+      ]
+    },
+    {
+      "id": "minutes",
+      "title": "每天学多久",
+      "patterns": [
+        "N 小时 / N 个小时 / N 钟头 / N h（字母 h 后面要留空格或放在句尾）",
+        "N 个半小时 / 一个半小时 / 半小时",
+        "N 分钟",
+        "数字可以写阿拉伯数字（1.5）或中文（两、三、十）",
+        "说的是每天的总时长，会限制在 30-360 分钟之间；没说时用每日专注目标的 2 倍（至少 60 分钟）"
+      ],
+      "examples": [
+        { "text": "每天 1.5 h 复习高数", "expect": { "minutes": 90, "subjects": ["高等数学"] } },
+        { "text": "一个月内准备四级，每天半小时", "expect": { "offset": 0, "days": 30, "minutes": 30, "exam": true, "subjects": ["四级"] } },
+        { "text": "45分钟复习英语", "expect": { "minutes": 45, "subjects": ["英语"] } }
+      ]
+    },
+    {
+      "id": "segments",
+      "title": "时段偏好",
+      "patterns": [
+        "早上 / 上午 / 清晨 / 早起 → 优先 08:00-12:00",
+        "下午 → 优先 13:30-17:30",
+        "晚上 / 晚间 / 夜里 / 今晚 / 明晚 → 优先 18:30-22:00",
+        "只是“优先”：说的时段排不下时会用其他空闲时段补；午饭 12:00-13:30、晚饭 17:30-18:30、22:00 以后不排，课程前后各留 10 分钟",
+        "没说时段时按「设置 → 学习时段偏好」（或你的专注习惯）排"
+      ],
+      "examples": [
+        { "text": "这周早上复习高数", "expect": { "offset": 0, "days": 5, "prefer": "morning", "subjects": ["高等数学"] } },
+        { "text": "今天下午学线代 2 小时", "expect": { "offset": 0, "days": 1, "prefer": "afternoon", "minutes": 120, "subjects": ["线性代数"] } }
+      ]
+    },
+    {
+      "id": "subjects",
+      "title": "科目",
+      "patterns": [
+        "直接写课表里的课程名（括号部分可省略，如“高等数学A”）",
+        "常见简称：高数、数分、微积分、线代、概率 / 概率论、物理、英语、C++ / cpp、编程、Python、制图、近代史、思政；课表里有对应课程时会换成课表里的名字",
+        "其他科目用“复习 / 准备 / 学习 / 预习 / 备考 / 攻克 + 科目名”，如“预习操作系统”",
+        "一次最多 5 门；没说科目时按当天 / 本周课表里的课排（最多 3 门），没有课表时为“自主学习”"
+      ],
+      "examples": [
+        { "text": "明晚学 C++ 一小时", "courses": ["C++程序设计"], "expect": { "offset": 1, "days": 1, "prefer": "evening", "minutes": 60, "subjects": ["C++程序设计"] } },
+        { "text": "明天复习高数", "courses": ["高等数学A（上）", "大学英语"], "expect": { "offset": 1, "days": 1, "subjects": ["高等数学A（上）"] } },
+        { "text": "预习操作系统", "expect": { "subjects": ["操作系统"] } }
+      ]
+    },
+    {
+      "id": "intensity",
+      "title": "强度与备考",
+      "patterns": [
+        "轻松 / 少一点 / 减少 / 别太累 / 放松 / 累了 → 每天时长 ×0.7，每段约 25 分钟",
+        "加强 / 多一点 / 冲刺 / 拼一把 / 高强度 → 每天时长 ×1.3，每段约 50 分钟",
+        "考试 / 期末 / 期中 / 备考 / 考前 / 测验 / 四级 / 六级 / 考研 → 备考模式：按“梳理考点 → 真题训练 → 错题复盘 → 限时模拟”轮换，最后两天优先级最高；没说天数时排 14 天（平时 7 天）"
+      ],
+      "examples": [
+        { "text": "这周轻松一点复习高数", "expect": { "offset": 0, "days": 5, "intensity": 0.7, "subjects": ["高等数学"] } },
+        { "text": "这周冲刺高数，每天三小时", "expect": { "offset": 0, "days": 5, "minutes": 180, "intensity": 1.3, "subjects": ["高等数学"] } },
+        { "text": "两周内准备期末考试，每天两小时", "expect": { "offset": 0, "days": 14, "minutes": 120, "exam": true, "subjects": ["期末"] } }
+      ]
+    },
+    {
+      "id": "followup",
+      "title": "接着上一轮改",
+      "patterns": [
+        "同一个对话里，没提到的部分沿用上一轮（科目、日期、每天时长、时段）",
+        "加上 / 再加 / 也要 / 还有 / 顺便 + 科目 → 在原科目上追加",
+        "只说新的日期（如“改到 11.1-11.10”）→ 只换日期",
+        "只说天数（如“改成 5 天”）→ 起始日不变，只改天数",
+        "只说时长（如“改成每天一小时”）→ 只改每天时长",
+        "不限 / 全天 / 任意时段 / 都可以 → 取消上一轮的时段偏好"
+      ],
+      "examples": [
+        { "text": "加上英语", "expect": { "subjects": ["英语"] } },
+        { "text": "改成5天", "expect": { "days": 5, "subjects": [] } },
+        { "text": "改成每天一小时", "expect": { "minutes": 60, "subjects": [] } }
+      ]
+    },
+    {
+      "id": "limits",
+      "title": "听不懂的写法",
+      "patterns": [
+        "频率：不认识“每周三次”“隔天”“每两天”，范围内每天都会排；想少排几天请缩短日期范围，或导入后删掉多余的任务",
+        "星期几：不认识“周三”“周五前”“下周一”（“下周一”会按整个下周排），请改用具体日期，如“10月28日”",
+        "具体钟点：不认识“8点”“19:30”，只按上午 / 下午 / 晚上排",
+        "“2h复习”这种 h 后面紧跟汉字的写法识别不到时长，请写“2 小时”",
+        "加课程、修改或删除已有任务、回答学习问题都需要接入大模型；规则引擎只负责排学习任务"
+      ],
+      "examples": [
+        { "text": "每周三次复习高数", "expect": { "subjects": ["高等数学"] } },
+        { "text": "周三晚上复习高数", "expect": { "prefer": "evening", "subjects": ["高等数学"] } },
+        { "text": "每天2h复习高数", "expect": { "subjects": ["高等数学"] } }
+      ]
+    }
+  ],
+  "planner": [
+    { "text": "复习高数", "days": 7, "daily_minutes": 120 },
+    { "text": "准备期末考试", "days": 14, "daily_minutes": 120 },
+    { "text": "下周每天一小时复习英语", "days": 7, "daily_minutes": 60 },
+    { "text": "下周轻松一点复习高数", "days": 7, "daily_minutes": 84 },
+    { "text": "下周冲刺高数，每天三小时", "days": 7, "daily_minutes": 234 },
+    { "text": "下周每天八小时复习高数", "days": 7, "daily_minutes": 360 }
+  ],
+  "conversation": [
+    { "text": "下周每天一小时复习高数", "expect": { "subjects": ["高等数学"], "days": 7, "daily_minutes": 60, "start_offset": "next_monday" } },
+    { "text": "加上英语", "expect": { "subjects": ["高等数学", "英语"], "days": 7, "daily_minutes": 60, "start_offset": "next_monday" } },
+    { "text": "改成每天两小时", "expect": { "subjects": ["高等数学", "英语"], "days": 7, "daily_minutes": 120, "start_offset": "next_monday" } },
+    { "text": "改成5天", "expect": { "subjects": ["高等数学", "英语"], "days": 5, "daily_minutes": 120, "start_offset": "next_monday" } }
+  ]
+}

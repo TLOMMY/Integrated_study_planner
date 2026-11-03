@@ -243,7 +243,7 @@ def weekly_review(db: Session, user: User, week_start: Optional[str] = None, ref
     if config is not None:
         try:
             review, suggestions = llm_review(config, stats, start, end, user)
-            provider, model = "llm", f"{config.name} · {config.model}"
+            provider, model = "llm", f"{config.name} · {providers.model_label(config.model)}"
         except LlmError as exc:
             error = exc.message
     if provider == "rule":

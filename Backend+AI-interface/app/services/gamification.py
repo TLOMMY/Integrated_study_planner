@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-成长体系（对标多邻国）：XP / 等级 / 连续打卡 / 每日目标 / 成就 / 排行榜 / 热力图。
+成长体系：XP / 等级 / 连续打卡 / 每日目标 / 成就 / 排行榜 / 热力图。
 
 所有统计都从 focus_records、study_tasks、xp_events 现算，不存冗余字段，
 因此不会出现"缓存的连续天数和真实记录对不上"的问题。
@@ -135,10 +135,36 @@ def completed_tasks_by_day(db: Session, user_id: int, since: Optional[date] = No
     return counts
 
 
+# 打卡规则——当天累计专注 ≥ 5 分钟，或完成至少 1 个任务。
+# 连续天数、断签保护卡、成就、热力图、周报都经由 active_days / is_checked_in，口径一致。
+STREAK_MIN_FOCUS = 5
+STREAK_MIN_TASKS = 1
+STREAK_RULE_TEXT = f"当天专注满 {STREAK_MIN_FOCUS} 分钟或完成 {STREAK_MIN_TASKS} 个任务即算打卡"
+
+
+def is_checked_in(focus_minutes: int, tasks_done: int) -> bool:
+    return int(focus_minutes or 0) >= STREAK_MIN_FOCUS or int(tasks_done or 0) >= STREAK_MIN_TASKS
+
+
+def streak_rule() -> dict:
+    return {"min_focus_minutes": STREAK_MIN_FOCUS, "min_tasks": STREAK_MIN_TASKS, "text": STREAK_RULE_TEXT}
+
+
 def active_days(db: Session, user_id: int) -> Set[date]:
-    days = {date.fromisoformat(d) for d, minutes in focus_minutes_by_day(db, user_id).items() if minutes > 0}
-    days |= {date.fromisoformat(d) for d in completed_tasks_by_day(db, user_id)}
-    return days
+    """打卡成功的日子（见 STREAK_MIN_FOCUS / STREAK_MIN_TASKS）。"""
+    minutes = focus_minutes_by_day(db, user_id)
+    tasks = completed_tasks_by_day(db, user_id)
+    return {date.fromisoformat(d) for d in set(minutes) | set(tasks) if is_checked_in(minutes.get(d, 0), tasks.get(d, 0))}
+
+
+def checkin_today(db: Session, user_id: int, day: Optional[date] = None) -> dict:
+    """某天（默认今天）的打卡进度：专注分钟、完成任务数、是否已打卡、还差几分钟。"""
+    day = day or timeutil.today()
+    minutes = focus_minutes_by_day(db, user_id, since=day).get(day.isoformat(), 0)
+    tasks = completed_tasks_by_day(db, user_id, since=day).get(day.isoformat(), 0)
+    done = is_checked_in(minutes, tasks)
+    return {"date": day.isoformat(), "focus_minutes": minutes, "tasks_done": tasks, "checked_in": done,
+            "focus_needed": 0 if done else max(0, STREAK_MIN_FOCUS - minutes)}
 
 
 # ---------------------------------------------------------------- 断签保护卡
@@ -288,6 +314,9 @@ def streak_info(db: Session, user_id: int, ref: Optional[date] = None) -> dict:
         "protected_days": sorted(d.isoformat() for d in protected),
         "last_protected": last_protected,
         "next_freeze_in": FREEZE_EVERY - studied_in_run % FREEZE_EVERY,
+        # 打卡规则与参考日（默认今天）的打卡进度，前端据此显示"今天已打卡 / 还差 N 分钟"
+        "rule": streak_rule(),
+        "today": checkin_today(db, user_id, ref),
     }
 
 
@@ -491,22 +520,25 @@ def heatmap(db: Session, user_id: int, weeks: int = 16, ref: Optional[date] = No
     tasks = completed_tasks_by_day(db, user_id, since=start)
 
     def level(m: int, t: int) -> int:
+        # 没达到打卡标准的日子不上色，与连续天数口径一致
+        if not is_checked_in(m, t):
+            return 0
         if m >= 120:
             return 4
         if m >= 60:
             return 3
         if m >= 30:
             return 2
-        return 1 if (m > 0 or t > 0) else 0
+        return 1
 
     days = []
     cursor = start
     while cursor <= ref:
         key = cursor.isoformat()
         m, t = minutes.get(key, 0), tasks.get(key, 0)
-        days.append({"date": key, "minutes": m, "tasks": t, "level": level(m, t)})
+        days.append({"date": key, "minutes": m, "tasks": t, "level": level(m, t), "checked_in": is_checked_in(m, t)})
         cursor += timedelta(days=1)
-    return {"start": start.isoformat(), "end": ref.isoformat(), "weeks": weeks, "days": days}
+    return {"start": start.isoformat(), "end": ref.isoformat(), "weeks": weeks, "days": days, "rule": streak_rule()}
 
 
 def subject_breakdown(db: Session, user_id: int, days: int = 30, ref: Optional[date] = None) -> List[dict]:

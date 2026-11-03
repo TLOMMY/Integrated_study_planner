@@ -10,9 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import (
     admin, ai_chat, ai_extras, ai_settings, auth, exams, feedback, imports, planning, social, study, tasks, timetable, users,
 )
+from app.api.routes import site
 from app.core.config import DEFAULT_SECRET, settings
-from app.core.errors import ok, register_exception_handlers
+from app.core.errors import ApiError, ok, register_exception_handlers
 from app.core.migrate import init_database
+from app.services.alerts import ErrorAlertMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -28,7 +30,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="课表（WakeUp）+ 任务与番茄钟（滴答清单）+ 成长激励（多邻国）。所有接口返回 {code, message, data}。",
+    description="课表、任务与番茄钟、成长激励与 AI 学习规划。所有接口返回 {code, message, data}。",
     lifespan=lifespan,
 )
 
@@ -40,9 +42,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 register_exception_handlers(app)
+# 后端 5xx 短时激增时告警（见 app/services/alerts.py）
+app.add_middleware(ErrorAlertMiddleware)
 
 for module in (auth, users, tasks, timetable, imports, study, ai_settings, feedback, admin, ai_chat, ai_extras, exams, social):
     app.include_router(module.router)
+app.include_router(site.router)
 for router in planning.routers:
     app.include_router(router)
 
@@ -54,6 +59,16 @@ def root():
 
 @app.get("/health", tags=["系统"])
 def health():
+    # 顺带检查数据库可读（健康检查脚本 deploy/healthcheck.sh 依赖这里）
+    from sqlalchemy import text
+
+    from app.core.database import engine
+
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001
+        raise ApiError(503, "数据库不可用", {"status": "db_error"}) from None
     return ok({"status": "ok"})
 
 

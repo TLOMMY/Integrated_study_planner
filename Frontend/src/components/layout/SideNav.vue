@@ -40,6 +40,8 @@ const groups = computed(() =>
     ? [...GROUPS, { title: '管理', items: [{ name: 'admin', label: '管理后台', icon: 'lucide:shield-check', to: '/admin' }] }]
     : GROUPS,
 )
+// 新手教程指向的入口
+const TOUR_NAV = { ai: 'nav-ai', statistics: 'nav-growth' }
 const level = computed(() => game.level)
 const streak = computed(() => game.streak)
 const startFocus = () => router.push({ name: 'focus' })
@@ -55,7 +57,7 @@ const startFocus = () => router.push({ name: 'focus' })
       </div>
     </RouterLink>
 
-    <button class="btn-primary mx-1 mt-5 py-2.5" type="button" @click="startFocus">
+    <button class="btn-primary mx-1 mt-5 py-2.5" type="button" data-tour="focus-start" @click="startFocus">
       <Icon :icon="focus.active ? 'lucide:timer' : 'lucide:play'" width="16" />
       {{ focus.active ? `专注中 ${focus.clock}` : '开始专注' }}
     </button>
@@ -70,6 +72,7 @@ const startFocus = () => router.push({ name: 'focus' })
           class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition"
           :class="route.name === item.name ? 'bg-primary-light text-primary' : 'text-ink-soft hover:bg-background hover:text-ink'"
           :aria-current="route.name === item.name ? 'page' : undefined"
+          :data-tour="TOUR_NAV[item.name]"
         >
           <Icon :icon="item.icon" width="18" :class="item.accent && route.name !== item.name && 'text-xp'" />
           <span class="flex-1">{{ item.label }}</span>

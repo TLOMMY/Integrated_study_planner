@@ -33,6 +33,7 @@ from datetime import datetime
 from typing import Callable, Dict, List, Optional, Tuple
 
 from app.core.config import settings
+from app.services import aliases
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
       "Chrome/131.0.0.0 Safari/537.36")
@@ -334,7 +335,7 @@ def _bili_item(raw: dict) -> Optional[dict]:
 
 
 def search_bilibili(keyword: str, limit: int = 5, order: str = "totalrank") -> dict:
-    keyword = _clean(keyword, 60)
+    keyword = _clean(aliases.expand_for_search(keyword), 60)  # 高数 → 高等数学
     if not keyword:
         raise SearchError("请提供搜索关键词")
     limit = max(1, min(MAX_BILIBILI, _int(limit, 5)))
@@ -512,7 +513,7 @@ FREE_ENGINES: List[Tuple[str, str, Callable]] = [
 
 
 def web_search(query: str, limit: int = 5) -> dict:
-    query = _clean(query, 100)
+    query = _clean(aliases.expand_for_search(query), 100)  # 课程简称展开
     if not query:
         raise SearchError("请提供搜索词")
     limit = max(1, min(MAX_WEB, _int(limit, 5)))

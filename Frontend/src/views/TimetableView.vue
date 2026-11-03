@@ -6,6 +6,7 @@ import CourseGrid from '@/components/timetable/CourseGrid.vue'
 import CourseEditor from '@/components/timetable/CourseEditor.vue'
 import CourseDetail from '@/components/timetable/CourseDetail.vue'
 import ImportSheet from '@/components/timetable/ImportSheet.vue'
+import SetManager from '@/components/timetable/SetManager.vue'
 import SemesterSettings from '@/components/timetable/SemesterSettings.vue'
 import ExportSheet from '@/components/timetable/ExportSheet.vue'
 import ShareSheet from '@/components/timetable/ShareSheet.vue'
@@ -29,6 +30,7 @@ const router = useRouter()
 const examInitial = ref(null)
 
 const MORE = [
+  { key: 'sets', label: '我的课表', hint: '新建、切换、重命名或删除整套课表', icon: 'lucide:layers' },
   { key: 'export', label: '导出图片', hint: '把本周课表存成 PNG', icon: 'lucide:image-down' },
   { key: 'share', label: '分享课表', hint: '生成 8 位分享码给同学', icon: 'lucide:share-2' },
   { key: 'share-import', label: '用分享码导入', hint: '导入同学分享的课表', icon: 'lucide:clipboard-paste' },
@@ -86,6 +88,16 @@ const load = async (week) => {
 }
 
 const open = (name) => (sheet.value = name)
+// 从课表管理的"导入为新课表"进入时，导入预览默认选"新建一套"
+const importTarget = ref('current')
+const importAsNew = () => {
+  importTarget.value = 'new'
+  sheet.value = 'import'
+}
+const closeImport = () => {
+  sheet.value = ''
+  importTarget.value = 'current'
+}
 const openEditor = (course = null, at = {}) => {
   editing.value = course
   preset.value = at
@@ -100,7 +112,7 @@ const removeCourse = async (course) => {
   if (await timetable.removeCourse(course).catch(ui.fail)) sheet.value = ''
 }
 
-/** 课后复习：在这节课当天生成一个复习任务（对标"课程 + 待办"联动）。 */
+/** 课后复习：在这节课当天生成一个复习任务（课程与待办联动）。 */
 const addReview = async (course) => {
   const date = data.value.days.find((d) => d.day_of_week === course.day_of_week)?.date
   try {
@@ -132,14 +144,27 @@ onActivated(() => {
           <h1 class="flex items-baseline gap-2 text-[22px] font-black text-ink">
             课表 <span class="text-sm font-bold text-ink-mute">{{ monthLabel }}</span>
           </h1>
+          <!-- 多套课表切换器：显示当前生效那套，点开管理 -->
+          <button
+            class="-ml-1 flex max-w-full items-center gap-1 rounded-lg px-1 text-left text-xs font-semibold text-ink-mute hover:bg-background"
+            type="button"
+            :aria-label="`当前课表：${timetable.sets.active_name}，点击切换或管理课表`"
+            data-testid="set-switcher"
+            @click="open('sets')"
+          >
+            <Icon icon="lucide:layers" width="13" class="shrink-0 text-primary" />
+            <span class="max-w-[8rem] shrink-0 truncate font-black text-primary">{{ timetable.sets.active_name }}</span>
+            <Icon icon="lucide:chevron-down" width="13" class="shrink-0 text-primary" />
+          </button>
           <p class="truncate text-xs font-semibold text-ink-mute">{{ headerLine }}</p>
         </div>
         <div class="flex gap-2">
           <!-- 电脑端直接平铺；手机端收进"更多" -->
+          <button class="icon-btn hidden lg:inline-flex" type="button" aria-label="管理课表" title="我的课表（新建 / 切换 / 删除）" @click="open('sets')"><Icon icon="lucide:layers" width="18" /></button>
           <button class="icon-btn hidden lg:inline-flex" type="button" aria-label="导出图片" title="导出图片" :disabled="!data?.courses.length" @click="open('export')"><Icon icon="lucide:image-down" width="18" /></button>
           <button class="icon-btn hidden lg:inline-flex" type="button" aria-label="分享课表" title="分享课表" @click="open('share')"><Icon icon="lucide:share-2" width="18" /></button>
           <button class="icon-btn hidden lg:inline-flex" type="button" aria-label="用分享码导入" title="用分享码导入" @click="open('share-import')"><Icon icon="lucide:clipboard-paste" width="18" /></button>
-          <button class="icon-btn" type="button" aria-label="导入课表" title="导入课表" @click="open('import')"><Icon icon="lucide:file-up" width="18" /></button>
+          <button class="icon-btn" type="button" aria-label="导入课表" title="导入课表" data-tour="timetable-import" @click="open('import')"><Icon icon="lucide:file-up" width="18" /></button>
           <button class="icon-btn" type="button" aria-label="学期设置" title="学期设置" @click="open('settings')"><Icon icon="lucide:settings-2" width="18" /></button>
           <button class="icon-btn lg:hidden" type="button" aria-label="更多" @click="open('more')"><Icon icon="lucide:ellipsis" width="18" /></button>
           <button class="icon-btn bg-primary text-on-primary" type="button" aria-label="添加课程" title="添加课程" @click="openEditor()"><Icon icon="lucide:plus" width="20" /></button>
@@ -218,7 +243,8 @@ onActivated(() => {
 
     <CourseDetail :open="sheet === 'detail'" :course="detail" @close="sheet = ''" @edit="openEditor" @delete="removeCourse" @review="addReview" />
     <CourseEditor :open="sheet === 'editor'" :course="editing" :preset="preset" @close="sheet = ''" />
-    <ImportSheet :open="sheet === 'import'" @close="sheet = ''" />
+    <ImportSheet :open="sheet === 'import'" :target="importTarget" @close="closeImport" />
+    <SetManager :open="sheet === 'sets'" @close="sheet = ''" @import="importAsNew" />
     <SemesterSettings :open="sheet === 'settings'" @close="sheet = ''" />
     <ExportSheet :open="sheet === 'export'" :data="data" :show-off="showOff" @close="sheet = ''" />
     <ShareSheet :open="sheet === 'share'" @close="sheet = ''" @import="sheet = 'share-import'" />

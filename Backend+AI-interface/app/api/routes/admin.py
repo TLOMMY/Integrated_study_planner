@@ -25,6 +25,7 @@ from app.models import (
 )
 from app.schemas import AdminSettingsIn, AdminUserUpdateIn, ClientErrorIn, FeedbackReplyIn, FeedbackStatusIn
 from app.services import mail, notify
+from app.services import ai_quota, alerts
 from app.api.routes.feedback import STATUS_LABELS, feedback_to_dict
 
 # 不设 prefix：本模块内的路径写完整（如 /admin/feedback），由 main.py 统一注册
@@ -332,6 +333,8 @@ def admin_dashboard(_admin: Admin, db: DB):
             "occurrences_7d": int(db.query(func.coalesce(func.sum(ClientError.count), 0)).filter(ClientError.last_seen >= week_ago).scalar() or 0),
         },
         "trend": trend,
+        # 服务器 DeepSeek Key 的用量（今日 / 7 天调用与 token、前 10 用户）
+        "ai_usage": ai_quota.dashboard(db),
     })
 
 
@@ -377,6 +380,8 @@ def report_client_error(payload: ClientErrorIn, request: Request, db: DB, user: 
     row.client = client or row.client
     row.app_version = (payload.version or "")[:20] or row.app_version
     db.commit()
+    # 前端错误短时激增时告警（后台线程，带冷却）
+    alerts.record_client_error(message[:200], row.page or "")
     return ok({"fingerprint": fingerprint, "count": row.count}, "已记录")
 
 
@@ -443,6 +448,11 @@ def _settings_view(db) -> dict:
         "mail_backend": mail.backend(),
         "mail_enabled": mail.can_deliver(),
         "require_email_verify": settings.REQUIRE_EMAIL_VERIFY,
+        # AI 每日限额（服务器 DeepSeek Key；0 = 不限）
+        "ai_daily_calls": ai_quota.limits(db)["calls"],
+        "ai_daily_tokens": ai_quota.limits(db)["tokens"],
+        "ai_limit_source": ai_quota.limit_sources(db),
+        "ai_env_configured": bool(settings.DEEPSEEK_API_KEY),
     }
 
 
@@ -459,7 +469,10 @@ def admin_settings_save(payload: AdminSettingsIn, _admin: Admin, db: DB):
         "feedback_notify_emails": notify.KEY_EMAILS,
         "public_url": notify.KEY_PUBLIC_URL,
     }
-    for field, value in payload.model_dump(exclude_none=True).items():
+    values = payload.model_dump(exclude_none=True)
+    # AI 每日限额单独保存（整数）
+    ai_quota.set_limits(db, values.pop("ai_daily_calls", None), values.pop("ai_daily_tokens", None))
+    for field, value in values.items():
         notify.set_setting(db, mapping[field], value.rstrip("/") if field == "public_url" else value)
     db.commit()
     return ok(_settings_view(db), "设置已保存")

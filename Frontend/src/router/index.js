@@ -21,11 +21,16 @@ const routes = [
       { path: 'admin', name: 'admin', component: () => import('@/views/AdminView.vue'), meta: { title: '管理后台', admin: true } },
       { path: 'report', name: 'report', component: () => import('@/views/WeeklyReportView.vue'), meta: { title: '每周报告' } },
       { path: 'groups', name: 'groups', component: () => import('@/views/GroupsView.vue'), meta: { title: '学习小组' } },
+      // 使用手册（锚点如 /manual#rule-engine）
+      { path: 'manual', name: 'manual', component: () => import('@/views/ManualView.vue'), meta: { title: '使用手册' } },
     ],
   },
   { path: '/focus-timer', name: 'focus', component: () => import('@/views/FocusTimerView.vue'), meta: { title: '专注' } },
   { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue'), meta: { title: '登录', public: true } },
   { path: '/forgot-password', name: 'forgot', component: () => import('@/views/ForgotPasswordView.vue'), meta: { title: '找回密码', public: true } },
+  // 隐私政策与用户协议（公开，登录前后都能打开）
+  { path: '/privacy', name: 'privacy', component: () => import('@/views/PrivacyView.vue'), meta: { title: '隐私政策', public: true } },
+  { path: '/terms', name: 'terms', component: () => import('@/views/TermsView.vue'), meta: { title: '用户协议', public: true } },
   { path: '/:pathMatch(.*)*', redirect: '/today-task' },
 ]
 

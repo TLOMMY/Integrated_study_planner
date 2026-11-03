@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.core import timeutil
 from app.core.security import hash_password, verify_password
-from app.models import FocusRecord, ImportLog, StudyPlan, StudyTask, Timetable, User, UserAchievement, XpEvent
+from app.models import (
+    FocusRecord, ImportLog, StudyPlan, StudyTask, Timetable, TimetableSet, User, UserAchievement, XpEvent,
+)
 from app.services import gamification, schedule
 from app.services.tasks import apply_schedule, spawn_next
 
@@ -60,11 +62,13 @@ def reset_demo(db: Session, user: User) -> None:
         db.query(model).filter(model.user_id == uid).delete(synchronize_session=False)
     db.query(StudyPlan).filter(StudyPlan.user_id == uid).delete(synchronize_session=False)
     db.query(Timetable).filter(Timetable.user_id == uid).delete(synchronize_session=False)
+    db.query(TimetableSet).filter(TimetableSet.user_id == uid).delete(synchronize_session=False)
     db.flush()
 
 
 def _seed_courses(db: Session, user: User) -> None:
     total = int(user.total_weeks)
+    current = schedule.active_set(db, user, create=True)
     for name, day, p1, p2, weeks_text, room, teacher in COURSES:
         weeks = _weeks(weeks_text, total)
         start, end = schedule.periods_to_times(user, p1, p2)
@@ -73,7 +77,7 @@ def _seed_courses(db: Session, user: User) -> None:
                 user_id=user.id, course_name=name, teacher=teacher, classroom=room, day_of_week=day,
                 start_period=p1, end_period=p2, start_time=start, end_time=end,
                 weeks=",".join(map(str, weeks)), week_text=schedule.format_weeks(weeks),
-                semester=user.semester, color=schedule.color_for(name),
+                semester=user.semester, color=schedule.color_for(name), set_id=current.id,
             )
         )
 

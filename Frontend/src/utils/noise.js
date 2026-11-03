@@ -6,7 +6,12 @@
  * - rain：雨声近似（低通的棕噪音做底 + 带通白噪音做雨幕 + 随机"雨滴"颗粒）
  *
  * 浏览器要求音频必须在用户手势里首次启动，因此 play() 应由按钮点击触发。
+ *
+ * kind 也可以是 "playlist:<id>"（我的音乐里的歌单），此时 play / pause / resume / stop / 音量
+ * 都转交给 musicPlayer，专注的开始 / 暂停 / 结束联动不需要区分声音来源。
  */
+import { isPlaylistKey, playlistIdOf } from './music'
+import { music } from './musicPlayer'
 
 export const NOISES = [
   { key: 'off', label: '关闭', icon: 'lucide:volume-x' },
@@ -23,7 +28,7 @@ const GUARD_KEY = 'focus-guard'
 export const noisePrefs = {
   get kind() {
     const value = localStorage.getItem(KIND_KEY)
-    return NOISES.some((n) => n.key === value) ? value : 'off'
+    return NOISES.some((n) => n.key === value) || isPlaylistKey(value) ? value : 'off'
   },
   set kind(value) {
     localStorage.setItem(KIND_KEY, value)
@@ -109,13 +114,15 @@ class NoisePlayer {
   }
 
   get playing() {
+    if (isPlaylistKey(this.kind)) return music.active
     return this.kind !== 'off' && this.nodes.length > 0
   }
 
   setVolume(value) {
     this.volume = Math.min(1, Math.max(0, value))
     noisePrefs.volume = this.volume
-    if (this.ctx && this.playing) this.master.gain.setTargetAtTime(this.gainFor(this.kind), this.ctx.currentTime, 0.05)
+    music.setVolume(this.volume)
+    if (this.ctx && this.playing && !isPlaylistKey(this.kind)) this.master.gain.setTargetAtTime(this.gainFor(this.kind), this.ctx.currentTime, 0.05)
   }
 
   gainFor(kind) {
@@ -127,6 +134,15 @@ class NoisePlayer {
   /** 开始（或切换到）某种噪音。必须在用户手势中首次调用。 */
   play(kind = noisePrefs.kind) {
     if (!kind || kind === 'off') return this.stop()
+    if (isPlaylistKey(kind)) {
+      // 歌单：停掉生成的噪音，交给 <audio> 播放器
+      if (!isPlaylistKey(this.kind)) this.teardown()
+      this.kind = kind
+      music.setVolume(this.volume)
+      music.play(playlistIdOf(kind))
+      return true
+    }
+    if (isPlaylistKey(this.kind)) music.stop()
     const ctx = this.ensure()
     if (!ctx) return false
     if (ctx.state === 'suspended') ctx.resume().catch(() => {})
@@ -197,6 +213,7 @@ class NoisePlayer {
 
   /** 暂停：淡出但保留 kind，resume() 可恢复。 */
   pause() {
+    if (isPlaylistKey(this.kind)) return music.pause()
     if (!this.ctx || !this.playing) return
     this.master.gain.setTargetAtTime(0, this.ctx.currentTime, 0.2)
     clearTimeout(this.dropTimer)
@@ -205,6 +222,7 @@ class NoisePlayer {
   }
 
   resume() {
+    if (isPlaylistKey(this.kind)) return music.resume()
     if (!this.ctx || !this.playing) return
     this.ctx.resume().catch(() => {})
     this.master.gain.setTargetAtTime(this.gainFor(this.kind), this.ctx.currentTime, 0.4)
@@ -225,6 +243,7 @@ class NoisePlayer {
 
   /** 淡出后停止。 */
   stop() {
+    if (isPlaylistKey(this.kind)) music.stop()
     this.kind = 'off'
     clearTimeout(this.dropTimer)
     if (!this.ctx) return true

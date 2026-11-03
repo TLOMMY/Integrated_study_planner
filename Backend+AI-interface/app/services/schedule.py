@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-课程表领域逻辑（对标 WakeUp 课程表）：节次时间、周次解析、教学周计算、冲突检测。
+课程表领域逻辑：节次时间、周次解析、教学周计算、冲突检测。
 """
 
 import json
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core import timeutil
 from app.core.errors import ApiError
-from app.models import Timetable, User
+from app.models import Timetable, TimetableSet, User
 
 DEFAULT_PERIOD_TIMES: List[Dict[str, str]] = [
     {"start": "08:00", "end": "08:45"},
@@ -156,13 +156,209 @@ def effective_semester(db: Session, user: User) -> str:
     return row[0] if row and row[0] else guess_semester()
 
 
-def user_courses(db: Session, user: User) -> List[Timetable]:
-    return (
-        db.query(Timetable)
-        .filter(Timetable.user_id == user.id, Timetable.semester == effective_semester(db, user))
-        .order_by(Timetable.day_of_week, Timetable.start_time)
+# ---------------------------------------------------------------- 多套课表
+MAX_SETS = 12
+DEFAULT_SET_NAME = "我的课表"
+
+
+def list_sets(db: Session, user: User) -> List[TimetableSet]:
+    return db.query(TimetableSet).filter(TimetableSet.user_id == user.id).order_by(TimetableSet.id).all()
+
+
+def get_set(db: Session, user: User, set_id: int) -> TimetableSet:
+    item = db.query(TimetableSet).filter(TimetableSet.id == set_id, TimetableSet.user_id == user.id).first()
+    if item is None:
+        raise ApiError(404, "这套课表不存在或已被删除")
+    return item
+
+
+def _adopt_orphans(db: Session, user: User, target: TimetableSet) -> None:
+    """还没归属任何一套的旧课程（当前学期的）归入 target。"""
+    db.query(Timetable).filter(
+        Timetable.user_id == user.id, Timetable.set_id.is_(None), Timetable.semester == effective_semester(db, user)
+    ).update({"set_id": target.id}, synchronize_session=False)
+
+
+def active_set(db: Session, user: User, create: bool = False) -> Optional[TimetableSet]:
+    """
+    当前生效的那套课表。没有标记生效的就取最新一套；一套都没有时 create=True 会新建"我的课表"
+    （并收编当前学期的旧课程），否则返回 None（读接口按旧口径：当前学期、未归套的课程）。
+    """
+    sets = list_sets(db, user)
+    current = next((s for s in sets if s.is_active), None) or (sets[-1] if sets else None)
+    if current is not None:
+        if create and not current.is_active:
+            current.is_active = True
+            db.flush()
+        return current
+    if not create:
+        return None
+    current = TimetableSet(user_id=user.id, name=DEFAULT_SET_NAME, is_active=True)
+    store_set_settings(db, user, current)
+    db.add(current)
+    db.flush()
+    _adopt_orphans(db, user, current)
+    db.flush()
+    return current
+
+
+def course_query(db: Session, user: User):
+    """只含当前生效那套课表的课程查询（所有读取课程的地方都应经过这里）。"""
+    query = db.query(Timetable).filter(Timetable.user_id == user.id)
+    current = active_set(db, user)
+    if current is None:
+        return query.filter(Timetable.set_id.is_(None), Timetable.semester == effective_semester(db, user))
+    return query.filter(Timetable.set_id == current.id)
+
+
+def find_course(db: Session, user: User, course_id) -> Optional[Timetable]:
+    """按 id 取当前生效课表里的一门课；不在当前课表（或不属于该用户）返回 None。"""
+    if not course_id:
+        return None
+    return course_query(db, user).filter(Timetable.id == course_id).first()
+
+
+def store_set_settings(db: Session, user: User, item: TimetableSet) -> None:
+    """把 User 上生效中的学期设置存进这套课表。"""
+    item.semester = effective_semester(db, user)
+    item.semester_start = user.semester_start
+    item.total_weeks = int(user.total_weeks or 20)
+    item.period_times = user.period_times
+
+
+def _load_set_settings(user: User, item: TimetableSet) -> None:
+    user.semester = item.semester or guess_semester()
+    user.semester_start = item.semester_start
+    user.total_weeks = int(item.total_weeks or 20)
+    user.period_times = item.period_times
+
+
+def activate_set(db: Session, user: User, target: TimetableSet) -> TimetableSet:
+    """切换生效的课表：旧那套的设置存回去，新那套的设置写回 User。"""
+    current = active_set(db, user, create=True)
+    if current.id == target.id:
+        return target
+    store_set_settings(db, user, current)
+    for item in list_sets(db, user):
+        item.is_active = item.id == target.id
+    _load_set_settings(user, target)
+    db.flush()
+    return target
+
+
+def create_set(db: Session, user: User, name: str, *, copy_settings: bool = True, activate: bool = True,
+               semester: Optional[str] = None, semester_start: Optional[str] = None,
+               total_weeks: Optional[int] = None, period_times_json: Optional[str] = None,
+               dedupe: bool = False) -> TimetableSet:
+    """新建一套空课表。copy_settings：沿用当前的学期名 / 开学日期 / 周数 / 节次时间；显式参数优先。"""
+    sets = list_sets(db, user)
+    if not sets and course_query(db, user).first() is not None:
+        # 旧数据还没归套：先把现有课程收进"我的课表"，免得新建后它们"消失"
+        active_set(db, user, create=True)
+        sets = list_sets(db, user)
+    if len(sets) >= MAX_SETS:
+        raise ApiError(422, f"最多只能保存 {MAX_SETS} 套课表，先删掉不用的再新建")
+    name = (name or "").strip()[:40] or f"课表 {len(sets) + 1}"
+    taken = {s.name for s in sets}
+    if name in taken:
+        if not dedupe:
+            raise ApiError(409, f"已经有一套叫「{name}」的课表了")
+        base, n = name[:36], 2
+        while f"{base} ({n})" in taken:
+            n += 1
+        name = f"{base} ({n})"
+    item = TimetableSet(user_id=user.id, name=name, is_active=False)
+    if copy_settings:
+        store_set_settings(db, user, item)
+    else:
+        item.semester, item.total_weeks, item.period_times = guess_semester(), 20, None
+    if semester:
+        item.semester = semester
+    if semester_start is not None:
+        item.semester_start = semester_start or None
+    if total_weeks:
+        item.total_weeks = int(total_weeks)
+    if period_times_json:
+        item.period_times = period_times_json
+    db.add(item)
+    db.flush()
+    if activate or not any(s.is_active for s in sets):
+        if sets:
+            activate_set(db, user, item)
+        else:
+            item.is_active = True
+            _load_set_settings(user, item)
+            db.flush()
+    return item
+
+
+def rename_set(db: Session, user: User, item: TimetableSet, name: str) -> TimetableSet:
+    name = (name or "").strip()[:40]
+    if not name:
+        raise ApiError(422, "课表名称不能为空")
+    if any(s.name == name and s.id != item.id for s in list_sets(db, user)):
+        raise ApiError(409, f"已经有一套叫「{name}」的课表了")
+    item.name = name
+    db.flush()
+    return item
+
+
+def delete_set(db: Session, user: User, item: TimetableSet) -> Optional[TimetableSet]:
+    """整套删除（含其中全部课程）。删的是生效那套时切到最新的另一套；一套不剩则保留学期设置、课表为空。"""
+    was_active = item.is_active
+    db.query(Timetable).filter(Timetable.user_id == user.id, Timetable.set_id == item.id).delete(synchronize_session=False)
+    db.delete(item)
+    db.flush()
+    rest = list_sets(db, user)
+    if not rest:
+        return None
+    if was_active or not any(s.is_active for s in rest):
+        target = rest[-1]
+        for other in rest:
+            other.is_active = other.id == target.id
+        _load_set_settings(user, target)
+        db.flush()
+        return target
+    return next(s for s in rest if s.is_active)
+
+
+def sets_payload(db: Session, user: User) -> dict:
+    """课表切换器用：全部课表（含课程数），生效那套的设置以 User 上的为准。"""
+    sets = list_sets(db, user)
+    current = active_set(db, user)
+    counts = dict(
+        db.query(Timetable.set_id, func.count(Timetable.id))
+        .filter(Timetable.user_id == user.id, Timetable.set_id.isnot(None))
+        .group_by(Timetable.set_id)
         .all()
     )
+    items = []
+    for s in sets:
+        active = current is not None and s.id == current.id
+        items.append({
+            "id": s.id,
+            "name": s.name,
+            "is_active": active,
+            "semester": effective_semester(db, user) if active else (s.semester or ""),
+            "semester_start": user.semester_start if active else s.semester_start,
+            "total_weeks": int((user.total_weeks if active else s.total_weeks) or 20),
+            "course_count": int(counts.get(s.id) or 0),
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+        })
+    if current is None:
+        # 还没建过任何一套：把现有课程当作默认的"我的课表"展示
+        items.append({"id": None, "name": DEFAULT_SET_NAME, "is_active": True,
+                      "semester": effective_semester(db, user), "semester_start": user.semester_start,
+                      "total_weeks": int(user.total_weeks or 20), "course_count": course_query(db, user).count(),
+                      "created_at": None})
+    return {"active_id": current.id if current else None,
+            "active_name": current.name if current else DEFAULT_SET_NAME,
+            "items": items, "max": MAX_SETS}
+
+
+def user_courses(db: Session, user: User) -> List[Timetable]:
+    """当前生效那套课表的全部课程。"""
+    return course_query(db, user).order_by(Timetable.day_of_week, Timetable.start_time).all()
 
 
 def courses_on_date(db: Session, user: User, day: date, courses: Optional[List[Timetable]] = None) -> List[Timetable]:
@@ -237,7 +433,9 @@ def save_course(db: Session, user: User, data: dict, course: Optional[Timetable]
             first = conflicts[0]
             raise ApiError(409, f"与「{first['course_name']}」在{first['overlap_weeks']}时间冲突", {"conflicts": conflicts})
 
-    course = course or Timetable(user_id=user.id, semester=effective_semester(db, user))
+    if course is None:
+        current = active_set(db, user, create=True)
+        course = Timetable(user_id=user.id, semester=effective_semester(db, user), set_id=current.id)
     course.course_name = data["course_name"]
     course.teacher = data.get("teacher") or ""
     course.classroom = data.get("classroom") or ""
@@ -314,13 +512,21 @@ def share_snapshot(db: Session, user: User) -> dict:
 
 
 def import_shared_courses(db: Session, user: User, snapshot: dict, mode: str = "merge",
-                          use_period_times: bool = False) -> dict:
+                          use_period_times: bool = False, set_name: Optional[str] = None) -> dict:
     """
-    把分享快照导入到自己的当前学期。
+    把分享快照导入到自己的当前课表。
     merge：只和自己原有的课程比对，时间冲突或完全相同的课跳过并说明原因；
-    replace：先清空本学期课程，再按分享者的课表原样导入（分享者自己允许的冲突也保留）。
+    replace：先清空当前课表的课程，再按分享者的课表原样导入（分享者自己允许的冲突也保留）；
+    new：新建一套课表（学期设置与节次时间都采用分享者的）并切换过去，再原样导入。
     未设置开学日期时，顺带采用分享者的开学日期与总周数（同班同学通常一致）。
     """
+    if mode == "new":
+        times = snapshot.get("period_times")
+        create_set(db, user, set_name or "同学的课表", copy_settings=True, dedupe=True,
+                   semester=snapshot.get("semester") or None, semester_start=snapshot.get("semester_start") or "",
+                   total_weeks=snapshot.get("total_weeks") or None,
+                   period_times_json=json.dumps(times, ensure_ascii=False) if times else None)
+        mode, use_period_times = "replace", False
     if not user.semester_start and snapshot.get("semester_start"):
         user.semester_start = snapshot["semester_start"]
         user.total_weeks = int(snapshot.get("total_weeks") or user.total_weeks or 20)
@@ -330,7 +536,7 @@ def import_shared_courses(db: Session, user: User, snapshot: dict, mode: str = "
     if not user.semester:
         user.semester = semester
     if mode == "replace":
-        db.query(Timetable).filter(Timetable.user_id == user.id, Timetable.semester == semester).delete()
+        course_query(db, user).delete(synchronize_session=False)
         db.flush()
     elif use_period_times:
         for course in user_courses(db, user):

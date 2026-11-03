@@ -1,0 +1,12 @@
+# 学业管家健康检查（由 xueyeguanjia-health.timer 每分钟触发）：/etc/systemd/system/xueyeguanjia-health.service
+# 需要 root：失败时 systemctl restart 后端；发送告警时脚本会切换到 xueyeguanjia 用户运行。
+[Unit]
+Description=XueYeGuanJia backend health check
+After=network-online.target xueyeguanjia.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/xueyeguanjia-healthcheck
+# 检查失败返回 1 属于正常结果，不把本单元标记为失败
+SuccessExitStatus=0 1
+TimeoutStartSec=60

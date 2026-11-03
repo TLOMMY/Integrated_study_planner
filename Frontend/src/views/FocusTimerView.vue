@@ -5,6 +5,9 @@ import { Icon } from '@iconify/vue'
 import { taskApi } from '@/api'
 import { useFocusSync } from '@/composables/useFocusSync'
 import { NOISES, guardEnabled } from '@/utils/noise'
+import { isPlaylistKey, playlistKey } from '@/utils/music'
+import { music, musicState } from '@/utils/musicPlayer'
+import { ensureLibrary, library, playlistForKey } from '@/composables/useMusicLibrary'
 import { useFocusStore } from '@/stores/focus'
 import { useTasksStore } from '@/stores/tasks'
 import { useUiStore } from '@/stores/ui'
@@ -55,7 +58,14 @@ const label = computed(() => ({ idle: '准备开始', running: '专注中', paus
 useFocusSync()
 const noiseOpen = ref(false)
 const guardOn = guardEnabled()
-const currentNoise = computed(() => NOISES.find((n) => n.key === focus.noiseKind) || NOISES[0])
+const currentNoise = computed(() => {
+  const playlist = playlistForKey(focus.noiseKind)
+  if (playlist) return { key: focus.noiseKind, label: `歌单「${playlist.name}」`, icon: 'lucide:list-music' }
+  if (isPlaylistKey(focus.noiseKind)) return { key: focus.noiseKind, label: '我的歌单', icon: 'lucide:list-music' }
+  return NOISES.find((n) => n.key === focus.noiseKind) || NOISES[0]
+})
+const soundOn = computed(() => focus.noiseKind !== 'off')
+ensureLibrary()
 // 离开专注页时停掉"试听"（专注进行中的白噪音继续播放）
 onBeforeUnmount(() => focus.stopPreview())
 
@@ -128,13 +138,13 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
       </div>
       <button
         class="flex h-10 w-10 items-center justify-center rounded-full"
-        :class="focus.noiseKind !== 'off' ? 'bg-white text-deep-ink' : 'bg-white/10'"
+        :class="soundOn ? 'bg-white text-deep-ink' : 'bg-white/10'"
         type="button"
-        :aria-label="`白噪音：${currentNoise.label}`"
+        :aria-label="`专注声音：${currentNoise.label}`"
         :aria-expanded="noiseOpen"
         @click="noiseOpen = !noiseOpen"
       >
-        <Icon :icon="focus.noiseKind !== 'off' ? currentNoise.icon : 'lucide:headphones'" width="18" />
+        <Icon :icon="soundOn ? currentNoise.icon : 'lucide:headphones'" width="18" />
       </button>
     </header>
 
@@ -154,6 +164,30 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
             <Icon :icon="n.icon" width="18" />{{ n.label }}
           </button>
         </div>
+        <!-- 我的歌单 -->
+        <div class="mt-3 flex items-center gap-1.5 px-1 text-[11px] font-bold text-white/60"><Icon icon="lucide:list-music" width="13" />我的歌单</div>
+        <div v-if="library.playlists.length" class="scrollbar-hide -mx-1 mt-1.5 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="radiogroup" aria-label="我的歌单">
+          <button
+            v-for="p in library.playlists"
+            :key="p.id"
+            type="button"
+            role="radio"
+            class="flex max-w-[180px] shrink-0 items-center gap-1 rounded-2xl px-3 py-1.5 text-[11px] font-bold transition"
+            :class="focus.noiseKind === playlistKey(p.id) ? 'bg-white text-deep-ink' : 'bg-white/10 text-white/75 hover:bg-white/15'"
+            :aria-checked="focus.noiseKind === playlistKey(p.id)"
+            @click="focus.setNoise(playlistKey(p.id))"
+          >
+            <span class="truncate">{{ p.name }}</span><span class="num opacity-60">{{ p.trackIds.length }}</span>
+          </button>
+        </div>
+        <RouterLink v-else to="/settings" class="mt-1.5 block rounded-2xl bg-white/5 px-3 py-2 text-[11px] text-white/60 hover:bg-white/10">
+          还没有歌单 · 到 设置 → 专注 → 我的音乐 导入本地歌曲<Icon icon="lucide:chevron-right" width="12" class="ml-0.5 inline" />
+        </RouterLink>
+        <div v-if="musicState.playlistId" class="mt-2 flex items-center gap-2 rounded-2xl bg-white/10 px-3 py-1.5" aria-live="polite">
+          <Icon icon="lucide:music" width="13" :class="musicState.playing ? 'animate-pulse text-white' : 'text-white/50'" />
+          <span class="min-w-0 flex-1 truncate text-[11px] text-white/80">{{ musicState.trackName || '加载中…' }}</span>
+          <button class="flex h-7 w-7 items-center justify-center rounded-full hover:bg-white/10" type="button" aria-label="下一首" title="下一首" @click="music.skip()"><Icon icon="lucide:skip-forward" width="14" /></button>
+        </div>
         <label class="mt-3 flex items-center gap-3 px-1">
           <Icon icon="lucide:volume-2" width="16" class="shrink-0 text-white/70" />
           <input
@@ -163,12 +197,12 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
             step="0.05"
             :value="focus.noiseVolume"
             class="h-1.5 flex-1 accent-white"
-            aria-label="白噪音音量"
+            aria-label="专注声音音量"
             @input="focus.setNoiseVolume(Number($event.target.value))"
           />
           <span class="num w-8 text-right text-[11px] text-white/70">{{ Math.round(focus.noiseVolume * 100) }}</span>
         </label>
-        <p class="mt-2 px-1 text-[10px] text-white/50">声音在本机实时生成，随专注开始 / 暂停自动播放、停止；会记住你的选择。</p>
+        <p class="mt-2 px-1 text-[10px] text-white/50">随专注开始 / 暂停自动播放、停止；会记住你的选择。白噪音在本机实时生成，歌单里的歌只存在本设备。</p>
       </section>
     </Transition>
 
@@ -274,7 +308,7 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
 
     <footer class="relative space-y-3 px-6 pb-[calc(var(--safe-bottom)+28px)]">
       <template v-if="focus.status === 'idle'">
-        <button class="btn w-full bg-white py-4 text-base text-deep-ink shadow-xl" type="button" @click="focus.start()">
+        <button class="btn w-full bg-white py-4 text-base text-deep-ink shadow-xl" type="button" data-tour="focus-start" @click="focus.start()">
           <Icon icon="lucide:play" width="20" />开始专注 {{ focus.plannedMinutes }} 分钟
         </button>
       </template>

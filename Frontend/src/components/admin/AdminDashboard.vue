@@ -4,6 +4,7 @@ import { Icon } from '@iconify/vue'
 import { adminApi } from '@/api/admin'
 import { themeColor } from '@/composables/useTheme'
 import { useUiStore } from '@/stores/ui'
+import AdminAiUsage from '@/components/admin/AdminAiUsage.vue'
 
 const EChart = defineAsyncComponent(() => import('@/components/stats/EChart.vue'))
 const emit = defineEmits(['go'])
@@ -117,6 +118,7 @@ const feedbackOption = computed(() => {
         <h3 class="section-title">近 14 天 AI 提问次数</h3>
         <EChart :option="aiOption" :height="160" class="mt-2" />
       </section>
+      <AdminAiUsage v-if="data.ai_usage" :usage="data.ai_usage" />
     </div>
   </div>
 </template>

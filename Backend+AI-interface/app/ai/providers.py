@@ -8,6 +8,7 @@ user.ai_provider 取值：
   "<id>" —— 使用该用户保存的某个配置
 """
 
+import dataclasses
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -17,6 +18,7 @@ from app.ai.llm import ModelConfig
 from app.core import crypto
 from app.core.config import settings
 from app.models import AiProvider, User
+from app.services import ai_quota
 
 PRESETS: List[dict] = [
     {"key": "deepseek", "name": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "model": "deepseek-v4-pro",
@@ -77,12 +79,34 @@ def env_model() -> str:
     return DEFAULT_ENV_MODEL if model in LEGACY_ENV_MODELS else model
 
 
-def env_config(thinking: str = "high") -> Optional[ModelConfig]:
+# ---- 模型友好名、服务器 DeepSeek 下可选 Flash / Pro
+FAST_ENV_MODEL = "deepseek-flash"
+ENV_MODELS: List[dict] = [
+    {"key": "deepseek-flash", "label": "DeepSeek V4.1 Flash（快）",
+     "hint": "响应快、省额度，日常问答、排任务、课表识别都够用"},
+    {"key": "deepseek-v4-pro", "label": "DeepSeek V4 Pro（强）",
+     "hint": "推理更强，复杂规划和多步修改更稳，但更慢"},
+]
+MODEL_LABELS = {item["key"]: item["label"] for item in ENV_MODELS}
+
+
+def model_label(model: Optional[str]) -> str:
+    """界面显示用的模型名：deepseek-flash → DeepSeek V4.1 Flash（快），其余原样。"""
+    return MODEL_LABELS.get((model or "").strip().lower(), model or "")
+
+
+def env_model_choice(user: Optional[User]) -> Optional[str]:
+    """用户在 AI 设置里为服务器 DeepSeek 选的模型；没选（或值不认识）返回 None。"""
+    value = getattr(user, "ai_env_model", None) if user is not None else None
+    return value if value in MODEL_LABELS else None
+
+
+def env_config(thinking: str = "high", model: Optional[str] = None) -> Optional[ModelConfig]:
     if not settings.DEEPSEEK_API_KEY:
         return None
     # 思考模式 + 多步工具调用耗时更长，超时至少 120 秒
     return ModelConfig(base_url=settings.DEEPSEEK_API_URL, api_key=settings.DEEPSEEK_API_KEY,
-                       model=env_model(), name=ENV_NAME, source="env",
+                       model=model if model in MODEL_LABELS else env_model(), name=ENV_NAME, source="env",
                        timeout=max(settings.DEEPSEEK_TIMEOUT, 120), thinking=_thinking(thinking))
 
 
@@ -105,7 +129,18 @@ def resolve(db: Session, user: User) -> Optional[ModelConfig]:
         provider = get_owned(db, user, int(mode))
         if provider is not None:
             return to_config(provider)
-    return env_config(getattr(user, "ai_thinking", None) or "high")
+    # 服务器 Key 打上用量计数凭据（超额在真正调用模型时返回 429，见 app/services/ai_quota.py）
+    return ai_quota.attach(env_config(getattr(user, "ai_thinking", None) or "high", env_model_choice(user)), user)
+
+
+def extraction_config(config: Optional[ModelConfig], user: Optional[User] = None) -> Optional[ModelConfig]:
+    """
+    结构化抽取（课表识别等）用的配置：服务器 DeepSeek 且用户没有明确选 Pro 时换成 Flash——
+    关闭思考后两者识别结果一致，Flash 快近一倍。用户自己的模型原样使用。
+    """
+    if config is None or config.source != "env" or env_model_choice(user):
+        return config
+    return dataclasses.replace(config, model=FAST_ENV_MODEL)
 
 
 def active_info(db: Session, user: User) -> dict:
@@ -114,7 +149,10 @@ def active_info(db: Session, user: User) -> dict:
         return {"provider": "rule", "name": "本地规则引擎", "model": None, "label": "本地规则引擎", "source": "rule"}
     thinking = config.thinking if llm.supports_thinking(config) else "off"
     return {"provider": "llm", "name": config.name, "model": config.model,
-            "label": f"{config.name} · {config.model}", "source": config.source,
+            "model_label": model_label(config.model),
+            "label": f"{config.name} · {model_label(config.model)}", "source": config.source,
             # thinking_supported=False 时界面上的"思考强度"置灰（该模型不传思考参数）
             "thinking": thinking, "thinking_setting": config.thinking,
-            "thinking_supported": llm.supports_thinking(ModelConfig(config.base_url, "", config.model, thinking="high"))}
+            "thinking_supported": llm.supports_thinking(ModelConfig(config.base_url, "", config.model, thinking="high")),
+            # 服务器 Key 的今日额度（用户自己的 Key 为 None，不限）
+            "quota": ai_quota.status(db, user) if config.source == "env" else None}

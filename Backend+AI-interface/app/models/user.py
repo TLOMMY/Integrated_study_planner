@@ -19,10 +19,10 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_demo = Column(Boolean, default=False)
 
-    # 每日专注目标（分钟），对应多邻国的"每日目标"
+    # 每日专注目标（分钟）
     daily_goal_minutes = Column(Integer, default=60)
 
-    # 学期设置，对应 WakeUp 课程表的"开学日期 / 总周数 / 节次时间"
+    # 学期设置：开学日期 / 总周数 / 节次时间
     semester = Column(String(40), nullable=True)
     semester_start = Column(String(10), nullable=True)
     total_weeks = Column(Integer, default=20)
@@ -47,11 +47,18 @@ class User(Base):
     focus_state = Column(Text, nullable=True)
     # 界面主题（default / dark / 其他主题名），跨设备同步
     theme = Column(String(30), default="default")
-    # v4 · A：使用服务器配置的模型（ai_provider=auto）时的思考强度 off / high / max
+    # 使用服务器配置的模型（ai_provider=auto）时的思考强度 off / high / max
     ai_thinking = Column(String(10), default="high")
-    # v4 · B：最近活跃时间（每 5 分钟最多写一次）与最近 60 天的活跃日期（逗号分隔，供后台统计日活/周活）
+    # 最近活跃时间（每 5 分钟最多写一次）与最近 60 天的活跃日期（逗号分隔，供后台统计日活/周活）
     last_seen_at = Column(DateTime, nullable=True)
     active_days = Column(Text, nullable=True)
+    # 使用服务器 DeepSeek 时选的模型（deepseek-flash / deepseek-v4-pro）；空表示跟随服务器默认
+    ai_env_model = Column(String(40), nullable=True)
+    # 看完 / 跳过新手教程的时间；空表示还没看过（首次登录会弹出）
+    onboarded_at = Column(DateTime, nullable=True)
+    # 注册时同意的隐私政策 / 用户协议版本与时间（旧客户端注册时为空）
+    terms_version = Column(String(20), nullable=True)
+    terms_agreed_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=now)
     updated_at = Column(DateTime, default=now, onupdate=now)

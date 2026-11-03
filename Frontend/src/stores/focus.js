@@ -24,7 +24,7 @@ const AWAY_THRESHOLD = 3000
 let guardInstalled = false
 
 /**
- * 番茄钟（对标滴答清单）。
+ * 番茄钟。
  * 用"累计已专注毫秒 + 当前段开始时间戳"计时，而不是 setInterval 递减，
  * 切页面、锁屏、刷新后时间依然准确。
  * v4：每轮有 sessionId 与 updatedAt，供跨设备同步（useFocusSync）判断新旧与去重；

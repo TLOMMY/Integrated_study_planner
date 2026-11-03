@@ -12,7 +12,7 @@ from app.api.deps import DB, CurrentUser
 from app.core import timeutil
 from app.core.errors import ApiError, ok
 from app.models import ImportLog, Timetable, TimetableShare, User
-from app.schemas import CourseIn, ShareImportIn, TimetableSettingsIn
+from app.schemas import CourseIn, ShareImportIn, TimetableSetIn, TimetableSetRenameIn, TimetableSettingsIn
 from app.services import gamification, schedule
 
 router = APIRouter(prefix="/timetable", tags=["课表"])
@@ -40,6 +40,8 @@ def timetable_payload(db, user: User, week: Optional[int] = None) -> dict:
             for i, d in enumerate(dates)
         ],
         "courses": [schedule.course_to_dict(c, total, selected if user.semester_start else None) for c in courses],
+        # 多套课表（切换器用）
+        "sets": schedule.sets_payload(db, user),
     }
 
 
@@ -58,10 +60,8 @@ def update_settings(payload: TimetableSettingsIn, user: CurrentUser, db: DB):
     if "semester" in changes and changes["semester"]:
         old = schedule.effective_semester(db, user)
         if old != changes["semester"]:
-            # 改学期名时把当前学期的课一并迁过去，避免课表"消失"
-            db.query(Timetable).filter(Timetable.user_id == user.id, Timetable.semester == old).update(
-                {"semester": changes["semester"]}
-            )
+            # 改学期名时把当前课表的课一并迁过去，避免课表"消失"
+            schedule.course_query(db, user).update({"semester": changes["semester"]}, synchronize_session=False)
         user.semester = changes["semester"]
     if "semester_start" in changes:
         user.semester_start = changes["semester_start"]
@@ -71,9 +71,51 @@ def update_settings(payload: TimetableSettingsIn, user: CurrentUser, db: DB):
         user.period_times = json.dumps(changes["period_times"], ensure_ascii=False)
         for course in schedule.user_courses(db, user):
             course.start_time, course.end_time = schedule.periods_to_times(user, course.start_period or 1, course.end_period or 1)
+    current = schedule.active_set(db, user)
+    if current is not None:
+        schedule.store_set_settings(db, user, current)
     db.commit()
     db.refresh(user)
     return ok(timetable_payload(db, user), "学期设置已保存")
+
+
+# ---------------------------------------------------------------- 多套课表
+@router.get("/sets", summary="我的全部课表（含课程数、哪套正在使用）")
+def list_sets(user: CurrentUser, db: DB):
+    return ok(schedule.sets_payload(db, user))
+
+
+@router.post("/sets", summary="新建一套空课表（默认沿用当前学期设置并切换过去），返回切换后的课表")
+def create_set(payload: TimetableSetIn, user: CurrentUser, db: DB):
+    item = schedule.create_set(db, user, payload.name, copy_settings=payload.copy_settings, activate=payload.activate)
+    db.commit()
+    db.refresh(user)
+    return ok(timetable_payload(db, user), f"已新建课表「{item.name}」")
+
+
+@router.put("/sets/{set_id}", summary="重命名课表")
+def rename_set(set_id: int, payload: TimetableSetRenameIn, user: CurrentUser, db: DB):
+    item = schedule.rename_set(db, user, schedule.get_set(db, user, set_id), payload.name)
+    db.commit()
+    return ok(timetable_payload(db, user), f"已重命名为「{item.name}」")
+
+
+@router.post("/sets/{set_id}/activate", summary="切换到这套课表（替换当前生效课表，学期设置随之切换）")
+def activate_set(set_id: int, user: CurrentUser, db: DB):
+    item = schedule.activate_set(db, user, schedule.get_set(db, user, set_id))
+    db.commit()
+    db.refresh(user)
+    return ok(timetable_payload(db, user), f"已切换到「{item.name}」")
+
+
+@router.delete("/sets/{set_id}", summary="整套删除课表（含其中全部课程，不可恢复）")
+def delete_set(set_id: int, user: CurrentUser, db: DB):
+    item = schedule.get_set(db, user, set_id)
+    name, count = item.name, db.query(Timetable.id).filter(Timetable.set_id == item.id).count()
+    schedule.delete_set(db, user, item)
+    db.commit()
+    db.refresh(user)
+    return ok(timetable_payload(db, user), f"已删除课表「{name}」及其中 {count} 门课")
 
 
 def _load_share(db, code: str) -> TimetableShare:
@@ -136,7 +178,11 @@ def import_share(code: str, payload: ShareImportIn, user: CurrentUser, db: DB):
     share = _load_share(db, code)
     snapshot = json.loads(share.payload)
     tracker = gamification.RewardTracker(db, user)
-    result = schedule.import_shared_courses(db, user, snapshot, payload.mode, payload.use_period_times)
+    set_name = None
+    if payload.mode == "new":
+        owner = db.get(User, share.user_id)
+        set_name = payload.set_name or f"{(owner.full_name or owner.username) if owner else '同学'}的课表"
+    result = schedule.import_shared_courses(db, user, snapshot, payload.mode, payload.use_period_times, set_name)
     if result["added_count"]:
         share.import_count = int(share.import_count or 0) + 1
         db.add(ImportLog(user_id=user.id, import_type="share", file_name=f"分享码 {share.code}",
@@ -164,7 +210,7 @@ def create_course(payload: CourseIn, user: CurrentUser, db: DB):
 
 @router.put("/{course_id}", summary="修改课程")
 def update_course(course_id: int, payload: CourseIn, user: CurrentUser, db: DB):
-    course = db.query(Timetable).filter(Timetable.id == course_id, Timetable.user_id == user.id).first()
+    course = schedule.find_course(db, user, course_id)
     if course is None:
         raise ApiError(404, "课程不存在或已被删除")
     course = _save_course(db, user, payload, course)
@@ -174,7 +220,7 @@ def update_course(course_id: int, payload: CourseIn, user: CurrentUser, db: DB):
 
 @router.delete("/{course_id}", summary="删除课程")
 def delete_course(course_id: int, user: CurrentUser, db: DB):
-    deleted = db.query(Timetable).filter(Timetable.id == course_id, Timetable.user_id == user.id).delete()
+    deleted = schedule.course_query(db, user).filter(Timetable.id == course_id).delete(synchronize_session=False)
     if not deleted:
         raise ApiError(404, "课程不存在或已被删除")
     db.commit()

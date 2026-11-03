@@ -3,13 +3,16 @@ import { computed, nextTick, onActivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import AiSettings from '@/components/ai/AiSettings.vue'
+import AiQuotaNote from '@/components/ai/AiQuotaNote.vue'
 import MaterialOutline from '@/components/ai/MaterialOutline.vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import AgentMessage from '@/components/ai/AgentMessage.vue'
 import ConversationList from '@/components/ai/ConversationList.vue'
+import MicButton from '@/components/common/MicButton.vue'
 import { useAiStore } from '@/stores/ai'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
+import { friendlyLabel } from '@/utils/aiModels'
 
 defineOptions({ name: 'AiAssistantView' })
 
@@ -133,10 +136,12 @@ onActivated(consumeQuery)
           <h1 class="truncate text-base font-black text-ink">{{ title }}</h1>
           <p class="flex items-center gap-1 text-[11px] font-semibold text-ink-mute">
             <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="ai.engine.provider === 'llm' ? 'bg-success' : 'bg-ink-mute'" />
-            <span class="truncate">{{ ai.engine.label }}<template v-if="ai.engine.thinking && ai.engine.thinking !== 'off'"> · 思考{{ ai.engine.thinking === 'max' ? '最高' : '高' }}</template></span>
+            <span class="truncate">{{ friendlyLabel(ai.engine.label) }}<template v-if="ai.engine.thinking && ai.engine.thinking !== 'off'"> · 思考{{ ai.engine.thinking === 'max' ? '最高' : '高' }}</template></span>
+            <AiQuotaNote :quota="ai.engine.quota" compact />
             <Icon icon="lucide:chevron-down" width="12" class="shrink-0" />
           </p>
         </button>
+        <RouterLink v-if="ai.engine.provider === 'rule'" :to="{ name: 'manual', hash: '#rule-engine' }" class="icon-btn text-ink-mute" aria-label="本地规则引擎能听懂哪些写法" title="本地规则引擎能听懂哪些写法"><Icon icon="lucide:circle-help" width="18" /></RouterLink>
         <button class="icon-btn" type="button" aria-label="新对话" :disabled="ai.streaming" @click="ai.newConversation()"><Icon icon="lucide:square-pen" width="18" /></button>
         <button class="icon-btn" type="button" aria-label="模型设置" @click="settingsOpen = true"><Icon icon="lucide:settings-2" width="18" /></button>
       </header>
@@ -183,6 +188,7 @@ onActivated(consumeQuery)
             @input="autosize"
             @keydown.enter.exact.prevent="send()"
           />
+          <MicButton v-model="text" :maxlength="2000" :disabled="ai.streaming" @update:model-value="nextTick(autosize)" />
           <button v-if="ai.streaming" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-inverse text-inverse-ink shadow-lift transition active:scale-95" type="button" aria-label="停止生成" @click="ai.stop()">
             <Icon icon="lucide:square" width="16" />
           </button>

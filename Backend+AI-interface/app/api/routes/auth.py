@@ -39,6 +39,12 @@ def register(payload: RegisterIn, db: DB):
         semester=schedule.guess_semester(),
         email_verified=verified,
     )
+    # 记录同意的隐私政策 / 用户协议版本（旧客户端不传，照常注册）
+    if payload.agreed_terms_version:
+        from app.core import timeutil
+
+        user.terms_version = payload.agreed_terms_version
+        user.terms_agreed_at = timeutil.now()
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -79,7 +85,7 @@ def demo_login(db: DB):
     return ok({**token_payload(user), "user": user_to_dict(user)}, "已进入演示账号")
 
 
-# ---------------------------------------------------------------- v4 · B：邮箱验证码、找回密码
+# ---------------------------------------------------------------- 邮箱验证码、找回密码
 @router.get("/options", summary="登录页需要的开关：注册是否必须验证邮箱、能否发送邮件")
 def auth_options():
     return ok({"require_email_verify": settings.REQUIRE_EMAIL_VERIFY, "mail_enabled": mail.can_deliver()})

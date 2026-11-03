@@ -29,6 +29,7 @@ const streakAtRisk = computed(() => game.streak?.at_risk)
         class="relative flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition"
         :class="isActive(tab) ? 'text-primary' : 'text-ink-mute'"
         :aria-current="isActive(tab) ? 'page' : undefined"
+        :data-tour="{ ai: 'nav-ai', statistics: 'nav-growth' }[tab.name]"
       >
         <span
           v-if="tab.primary"

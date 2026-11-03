@@ -37,7 +37,7 @@ def _resolve_sqlite_url(url: str) -> str:
 
 class Settings:
     APP_NAME = "智能学习规划系统"
-    APP_VERSION = "3.0.0"
+    APP_VERSION = "1.1.0"
 
     DATABASE_URL: str = _resolve_sqlite_url(_env("DATABASE_URL", default="sqlite:///./study_planner.db"))
 
@@ -80,7 +80,7 @@ class Settings:
     LOGIN_MAX_FAILS: int = int(_env("LOGIN_MAX_FAILS", default="5"))
     LOGIN_LOCK_MINUTES: int = int(_env("LOGIN_LOCK_MINUTES", default="10"))
 
-    # ---- B：邮件、验证码、反馈通知
+    # ---- 邮件、验证码、反馈通知
     # 邮件发送方式：smtp（真实发送）/ console（只写日志，开发用）/ memory（测试读取）；
     # 留空时配置了 SMTP_HOST 就用 smtp，否则 console
     MAIL_BACKEND: str = (_env("MAIL_BACKEND", default="") or "").lower()
@@ -103,13 +103,31 @@ class Settings:
     # 网站对外地址（通知消息里的"后台链接"），如 https://app.xueyeguanjia.com
     APP_PUBLIC_URL: str = _env("APP_PUBLIC_URL", default="")
 
-    # ---- F：联网搜索（AI 智能体推荐课程 / 学习资源时调用，见 app/ai/search.py）
+    # ---- 联网搜索（AI 智能体推荐课程 / 学习资源时调用，见 app/ai/search.py）
     # AI_WEB_SEARCH=0 关闭全部联网搜索工具（B 站 + 通用搜索）
     AI_WEB_SEARCH: bool = _env("AI_WEB_SEARCH", default="1").lower() in {"1", "true", "yes"}
     # 通用搜索服务商：bocha（博查）/ tavily / serper；留空则依次尝试免 Key 的 360 搜索、必应、DuckDuckGo 网页结果（可能不稳定）
     SEARCH_PROVIDER: str = (_env("SEARCH_PROVIDER", default="") or "").strip().lower()
     SEARCH_API_KEY: Optional[str] = _env("SEARCH_API_KEY")
     SEARCH_TIMEOUT: int = int(_env("SEARCH_TIMEOUT", default="8"))
+
+    # ---- 上线必需（AI 限额、合规、告警）
+    # 服务器 DeepSeek Key 的每用户每日上限（0 = 不限）；管理后台「设置」里改的值优先。用户自己的 Key、管理员不受限
+    AI_DAILY_CALLS: int = int(_env("AI_DAILY_CALLS", default="30"))
+    AI_DAILY_TOKENS: int = int(_env("AI_DAILY_TOKENS", default="500000"))
+    # 备案号（为空则页面不显示）：ICP 备案号如"京ICP备12345678号-1"，公安备案号如"京公网安备11010502000000号"
+    ICP_NUMBER: str = _env("ICP_NUMBER", default="")
+    POLICE_BEIAN: str = _env("POLICE_BEIAN", default="")
+    # 隐私政策 / 用户协议里的联系邮箱
+    CONTACT_EMAIL: str = _env("CONTACT_EMAIL", default="contact@example.com")
+    # 隐私政策与用户协议的版本（改动条款时更新，注册时记录用户同意的版本）
+    TERMS_VERSION: str = _env("TERMS_VERSION", default="2026-10-26")
+    # 错误激增告警：WINDOW 分钟内后端 5xx ≥ ALERT_5XX 次或前端错误 ≥ ALERT_CLIENT_ERRORS 次时，
+    # 通过反馈通知的机器人 / 邮箱告警；同类告警 COOLDOWN 分钟内只发一次。阈值设 0 关闭
+    ALERT_WINDOW_MINUTES: int = int(_env("ALERT_WINDOW_MINUTES", default="5"))
+    ALERT_5XX: int = int(_env("ALERT_5XX", default="10"))
+    ALERT_CLIENT_ERRORS: int = int(_env("ALERT_CLIENT_ERRORS", default="30"))
+    ALERT_COOLDOWN_MINUTES: int = int(_env("ALERT_COOLDOWN_MINUTES", default="30"))
 
 
 settings = Settings()

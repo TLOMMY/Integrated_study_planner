@@ -270,11 +270,29 @@ export const useAiStore = defineStore('ai', {
       proposal.applied = true
       if (result.plan?.id) proposal.plan_id = result.plan.id
       ui.reward(result.reward)
-      if (result.ok_count && !result.fail_count) ui.success(`已导入 ${result.ok_count} 条`)
-      else if (result.ok_count) ui.toast(`已导入 ${result.ok_count} 条，${result.fail_count} 条未导入，原因见卡片`, 'warning', 3600)
-      else ui.toast('全部未能导入，请查看每条的原因并修改后重试', 'error', 3600)
+      const verb = proposal.type === 'deletes' ? '删除' : '导入'
+      if (result.ok_count && !result.fail_count) ui.success(`已${verb} ${result.ok_count} 条`)
+      else if (result.ok_count) ui.toast(`已${verb} ${result.ok_count} 条，${result.fail_count} 条未${verb}，原因见卡片`, 'warning', 3600)
+      else ui.toast(`全部未能${verb}，请查看每条的原因${proposal.type === 'deletes' ? '' : '并修改后重试'}`, 'error', 3600)
       if (proposal.type !== 'courses') useTasksStore().afterChange()
       if (proposal.type !== 'tasks') useTimetableStore().load().catch(() => {})
+      return result
+    },
+
+    /** 撤销删除提案里已删除的条目（keys 为空表示全部），恢复结果写回卡片。 */
+    async undoProposal(message, proposal, keys = null) {
+      const result = await agentApi.undo({ message_id: message.id, proposal_id: proposal.id, keys })
+      proposal.results = { ...(proposal.results || {}) }
+      for (const r of result.results) {
+        const stored = proposal.results[r.key]
+        if (!r.ok || !stored) continue
+        proposal.results[r.key] = { ...stored, undone: true, can_undo: false, restored_id: r.id, summary: '已撤销删除' }
+        const item = (proposal.items || []).find((i) => i.key === r.key)
+        if (item && r.id) item.id = r.id
+      }
+      useUiStore().success(`已恢复 ${result.ok_count} 项`)
+      useTasksStore().afterChange()
+      useTimetableStore().load().catch(() => {})
       return result
     },
 
@@ -295,6 +313,9 @@ export const useAiStore = defineStore('ai', {
     },
     setThinking(thinking) {
       return this.applySettings(aiApi.setThinking(thinking), null)
+    },
+    setEnvModel(envModel) {
+      return this.applySettings(aiApi.setEnvModel(envModel), null)
     },
     saveProvider(payload, id = null) {
       return this.applySettings(id ? aiApi.updateProvider(id, payload) : aiApi.createProvider(payload), id ? '已保存' : '已添加并启用')

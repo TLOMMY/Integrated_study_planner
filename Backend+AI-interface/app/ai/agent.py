@@ -32,7 +32,7 @@ from app.services import prefs as prefs_service
 from app.services import schedule
 from app.services.tasks import PRIORITY_LABELS, apply_schedule, get_owned_plan, visible_tasks
 
-try:  # 联网搜索由代理 F 实现；模块缺失或出错时不影响其他工具
+try:  # 联网搜索模块缺失或出错时不影响其他工具
     from app.ai import search as search_tools
 except Exception:  # noqa: BLE001
     search_tools = None
@@ -51,14 +51,15 @@ SYSTEM_PROMPT = """你是「学业管家」里的 AI 学习助手，服务对象
 ## 基本事实
 - 时间一律按北京时间（Asia/Shanghai）。今天的日期、星期、教学周、节次表、学习偏好、近期考试都要先调用 get_context 获取，不要自己猜日期。
 - 同学的课程和任务只能通过 list_courses / list_tasks / get_free_slots 查询，绝不编造不存在的课程、任务或 id。
-- 你没有直接修改数据的权限。新建或修改任何东西，都必须调用 propose_tasks / propose_courses / propose_changes 生成"提案卡片"，同学在卡片上确认后才会导入。所以回复里要说"已为你生成，确认后导入"，不能说"已添加 / 已修改"。
+- 你没有直接修改数据的权限。新建、修改或删除任何东西，都必须调用 propose_tasks / propose_courses / propose_changes / propose_deletes 生成"提案卡片"，同学在卡片上确认后才会执行。所以回复里要说"已为你生成，确认后导入 / 删除"，不能说"已添加 / 已修改 / 已删除"。
 
 ## 先判断意图
 1. 普通问答（如"线代怎么复习""这个概念是什么意思"）：直接用你的知识回答，不要调用任何提案工具，不要硬塞计划。
 2. 新建学习任务 / 复习计划 / 作业安排：调用 propose_tasks。
 3. 往课表里加课程（每周固定星期、固定节次、按周次上课的课，如"周四 11-12 节数据库，1-16 周"）：调用 propose_courses。课程和任务不同：课程是每周重复的固定课，任务是某一天某个时段的学习块。
-4. 修改或删除已有的任务 / 课程（改时间、改日期、改时长、改标题或优先级、删除、整天挪动、改课程的节次 / 星期 / 教室 / 周次）：先用 list_tasks 或 list_courses 找到真实 id，再调用 propose_changes。
-5. 一句话里同时有多种意图（比如既要加课又要排复习），分别调用对应的提案工具，同时给出两类提案。
+4. 修改已有的任务 / 课程（改时间、改日期、改时长、改标题或优先级、整天挪动、改课程的节次 / 星期 / 教室 / 周次）：先用 list_tasks 或 list_courses 找到真实 id，再调用 propose_changes。修改后对象仍然存在。
+5. 删除已有的任务 / 课程（"删掉""删除""去掉""不要了""清空"，如"删掉明天所有任务""删除周四的体育课"）：调用 propose_deletes，不要用 propose_changes。删除后对象不再存在；"取消勾选""取消完成""改到别的时间"都不是删除。
+6. 一句话里同时有多种意图（比如既要加课又要排复习），分别调用对应的提案工具，同时给出多类提案。
 
 ## 什么时候追问
 - 只有当关键信息缺失、会明显影响结果、而且无法通过工具查到时，才调用 ask_user。一次只问最关键的 1-2 点，尽量给 2-4 个可点选的短选项。调用 ask_user 后本轮结束，等同学回答。
@@ -74,7 +75,13 @@ SYSTEM_PROMPT = """你是「学业管家」里的 AI 学习助手，服务对象
 
 ## 修改已有内容的规则
 - 只用工具查到的真实 id。每条修改只填需要变动的字段，并写清原因。
-- "把明天的任务都往后挪一天"这类整天挪动：对当天每个任务分别提交一条修改日期的 update。删除用 action=delete。
+- "把明天的任务都往后挪一天"这类整天挪动：对当天每个任务分别提交一条修改日期的 update。
+
+## 删除的规则
+- 批量删除任务（"删掉明天所有任务""清空这周的英语任务"）：可以直接在 propose_deletes 里用 task_filter 指定日期区间和关键词，服务器会找出全部匹配的任务；也可以先 list_tasks 再逐条列出 id。
+- 删除课程：先 list_courses 找到真实 id；同名课程每周上多次时，按同学说的星期 / 节次只删对应那条，说的是整门课才全部列出。
+- 只删同学明确要删的；范围不清楚（比如"删掉那个任务"但匹配到多个）时先 ask_user。
+- 删除提案需要同学在卡片上确认，回复里说"确认后删除"，不能说"已删除"。删除后在卡片上可以撤销。
 
 ## 回复风格
 - 简体中文，像靠谱的学长学姐：先用 1-3 句话给出结论或建议，再说明提案卡片里有什么，不要把每个任务逐条复述（卡片上已经有）。
@@ -114,12 +121,22 @@ _COURSE_ITEM = {"type": "object", "properties": {
 _CHANGE_ITEM = {"type": "object", "properties": {
     "target": {"type": "string", "enum": ["task", "course"]},
     "id": {"type": "integer", "description": "list_tasks / list_courses 返回的真实 id"},
-    "action": {"type": "string", "enum": ["update", "delete"]},
+    "action": {"type": "string", "enum": ["update"], "description": "只用于修改；删除请用 propose_deletes"},
     "changes": {"type": "object", "description": (
         "只填要改的字段。任务：date、start_time、duration_minutes、title、subject、priority、note；"
         "课程：course_name、day_of_week、start_period、end_period、weeks、week_text、classroom、teacher")},
     "reason": {"type": "string"},
 }, "required": ["target", "id", "action"]}
+_DELETE_ITEM = {"type": "object", "properties": {
+    "target": {"type": "string", "enum": ["task", "course"]},
+    "id": {"type": "integer", "description": "list_tasks / list_courses 返回的真实 id"},
+    "reason": {"type": "string"},
+}, "required": ["target", "id"]}
+_TASK_FILTER = {"type": "object", "description": "按条件批量选出要删除的任务（服务器查询，不必逐条列 id）", "properties": {
+    "start": _DATE, "end": _DATE,
+    "query": {"type": "string", "description": "可选，标题 / 科目 / 备注包含的关键词"},
+    "include_completed": {"type": "boolean", "description": "是否连已完成的任务一起删，默认否"}},
+    "required": ["start", "end"]}
 
 CORE_TOOLS: List[dict] = [
     _fn("get_context", "获取今天的日期与星期、当前时间、教学周、节次时间表、学习时段偏好、近期考试。每轮对话涉及日期时先调用。", {}),
@@ -136,9 +153,14 @@ CORE_TOOLS: List[dict] = [
         "items": {"type": "array", "items": _TASK_ITEM}}, ["items"]),
     _fn("propose_courses", "生成【新增课程到课表】提案卡片（每周固定上课的课程）。", {
         "items": {"type": "array", "items": _COURSE_ITEM}}, ["items"]),
-    _fn("propose_changes", "生成【修改 / 删除已有任务或课程】提案卡片，会显示修改前→修改后对比。", {
+    _fn("propose_changes", "生成【修改已有任务或课程】提案卡片，会显示修改前→修改后对比。删除不要用这个工具。", {
         "summary": {"type": "string"},
         "items": {"type": "array", "items": _CHANGE_ITEM}}, ["items"]),
+    _fn("propose_deletes", "生成【删除已有任务或课程】提案卡片（可批量），同学确认后逐条删除，删除后可撤销。"
+        "items 列出要删的 id；批量删任务时也可以用 task_filter 按日期区间 / 关键词选出。", {
+        "summary": {"type": "string", "description": "一句话说明删什么"},
+        "items": {"type": "array", "items": _DELETE_ITEM},
+        "task_filter": _TASK_FILTER}),
     _fn("ask_user", "信息不足时向同学追问。一次只问 1-2 个最关键的问题，尽量给 2-4 个短选项。调用后本轮结束。", {
         "question": {"type": "string"},
         "options": {"type": "array", "items": {"type": "string"}, "description": "可点选的短选项，每个不超过 20 字"}},
@@ -153,12 +175,13 @@ TOOL_LABELS = {
     "propose_tasks": "生成任务提案",
     "propose_courses": "生成课程提案",
     "propose_changes": "生成修改提案",
+    "propose_deletes": "生成删除提案",
     "ask_user": "追问",
 }
 
 
 def _search_tools() -> List[dict]:
-    """联网搜索工具（代理 F）：优先用 available_tools()（尊重管理员的 AI_WEB_SEARCH 开关）。"""
+    """联网搜索工具：优先用 available_tools()（尊重管理员的 AI_WEB_SEARCH 开关）。"""
     if search_tools is None:
         return []
     try:
@@ -589,7 +612,7 @@ def _describe_change(db: Session, user: User, raw: dict, checker: Checker) -> Tu
         item["warnings"] = errors + item["warnings"]
         item["summary"] = "；".join(f"{d['field']}：{d['before']} → {d['after']}" for d in item["diff"]) or "没有变化"
         return item, []
-    course = db.query(Timetable).filter(Timetable.id == obj_id, Timetable.user_id == user.id).first() if obj_id else None
+    course = schedule.find_course(db, user, obj_id)  # 只认当前生效那套课表里的课
     if course is None:
         return None, [f"课程 id={obj_id} 不存在（请先用 list_courses 查真实 id）"]
     before = _course_snapshot(user, course)
@@ -626,6 +649,60 @@ def build_change_proposal(db: Session, user: User, raw_items, summary: str = "")
               "items": [f"{i['title']}：{i['summary']}" for i in items][:20],
               "invalid": invalid[:10], "issues": issues[:10],
               "note": "修改提案已展示给同学，等待确认。" if items else "没有可用的修改，请先查询真实 id。"}
+    return proposal, result
+
+
+def _delete_item(db: Session, user: User, target: str, obj_id: Optional[int], reason: str = "") -> Tuple[Optional[dict], str]:
+    """把一条删除规范化：查出真实对象（只查自己的）。找不到返回 (None, 原因)。"""
+    if target == "course":
+        course = schedule.find_course(db, user, obj_id)  # 只认当前生效那套课表里的课
+        if course is None:
+            return None, f"课程 id={obj_id} 不存在（请先用 list_courses 查真实 id）"
+        snap = _course_snapshot(user, course)
+        return {"target": "course", "id": course.id, "title": course.course_name, "reason": reason,
+                "summary": f"{_course_line(snap)} · {snap['week_text']}" + (f" · {snap['classroom']}" if snap["classroom"] else ""),
+                "warnings": ["会从课表的每一周移除这门课"]}, ""
+    task = db.query(StudyTask).filter(StudyTask.id == obj_id, StudyTask.user_id == user.id).first() if obj_id else None
+    if task is None:
+        return None, f"任务 id={obj_id} 不存在（请先用 list_tasks 查真实 id）"
+    warnings = ["这个任务已完成，删除后它的完成记录也会消失"] if task.completed else []
+    return {"target": "task", "id": task.id, "title": task.title, "reason": reason,
+            "summary": _task_line(_task_snapshot(task)) + (f" · {task.subject}" if task.subject else ""),
+            "completed": bool(task.completed), "warnings": warnings}, ""
+
+
+def build_delete_proposal(db: Session, user: User, raw_items, task_filter=None, summary: str = "") -> Tuple[dict, dict]:
+    """删除提案：逐条列出待删项（id 或按条件选出的任务），同学确认后才删。"""
+    wanted: List[Tuple[str, Optional[int], str]] = []
+    for raw in (raw_items if isinstance(raw_items, list) else [])[:MAX_ITEMS]:
+        if isinstance(raw, dict):
+            target = "course" if raw.get("target") == "course" else "task"
+            wanted.append((target, _int(raw.get("id")), str(raw.get("reason") or "").strip()[:200]))
+    if isinstance(task_filter, dict) and task_filter.get("start"):
+        found = tool_list_tasks(db, user, task_filter)
+        wanted += [("task", t["id"], "") for t in found["tasks"]]
+    items, invalid, seen = [], [], set()
+    for target, obj_id, reason in wanted:
+        if (target, obj_id) in seen:
+            continue
+        seen.add((target, obj_id))
+        item, problem = _delete_item(db, user, target, obj_id, reason)
+        if item is None:
+            invalid.append(problem)
+            continue
+        items.append(item)
+        if len(items) >= MAX_ITEMS:
+            break
+    items.sort(key=lambda i: (i["target"] != "task", i["summary"]))
+    for index, item in enumerate(items):
+        item["key"] = f"d{index}"
+    tasks = sum(1 for i in items if i["target"] == "task")
+    proposal = {"id": _short_id(), "type": "deletes", "title": "删除已有内容",
+                "summary": (summary or "").strip()[:300], "items": items, "results": {}, "applied": False}
+    result = {"ok": bool(items), "proposal_id": proposal["id"] if items else None, "count": len(items),
+              "tasks": tasks, "courses": len(items) - tasks,
+              "items": [f"{i['title']}（{i['summary']}）" for i in items][:20], "invalid": invalid[:10],
+              "note": "删除提案已展示给同学，确认后才会删除。" if items else "没有找到要删除的内容，请先查询真实 id 或调整筛选条件。"}
     return proposal, result
 
 
@@ -766,7 +843,7 @@ def _change_task(db: Session, user: User, raw: dict, checker: Checker) -> dict:
 def _change_course(db: Session, user: User, raw: dict, checker: Checker) -> dict:
     key, obj_id = raw.get("key"), _int(raw.get("id"))
     changes = raw.get("changes") if isinstance(raw.get("changes"), dict) else {}
-    course = db.query(Timetable).filter(Timetable.id == obj_id, Timetable.user_id == user.id).first() if obj_id else None
+    course = schedule.find_course(db, user, obj_id)  # 只认当前生效那套课表里的课
     if course is None:
         return _fail(key, raw.get("title") or "课程", "课程不存在或已被删除")
     if raw.get("action") == "delete":
@@ -804,6 +881,160 @@ def _apply_changes(db: Session, user: User, items: List[dict]) -> dict:
     return {"results": results, "plan": None}
 
 
+# ---------------------------------------------------------------- 删除（逐条删、保存快照以便撤销）
+def _row_snapshot(row) -> dict:
+    """整行快照（所有列），日期时间转成 ISO 字符串，能放进消息 meta。"""
+    data = {}
+    for column in row.__table__.columns:
+        value = getattr(row, column.key)
+        data[column.key] = value.isoformat() if hasattr(value, "isoformat") else value
+    return data
+
+
+def _row_restore(db: Session, model, snap: dict, user: User):
+    """按快照重建一行：只写本模型存在的列；user_id 强制为当前用户；原 id 被占用时换新 id；指向已不存在的外键置空。"""
+    from datetime import datetime, time as dt_time
+
+    from sqlalchemy import Date, DateTime, Time
+
+    values = {}
+    for column in model.__table__.columns:
+        if column.key not in snap:
+            continue
+        value = snap[column.key]
+        if isinstance(value, str):
+            try:
+                if isinstance(column.type, DateTime):
+                    value = datetime.fromisoformat(value)
+                elif isinstance(column.type, Date):
+                    value = date.fromisoformat(value)
+                elif isinstance(column.type, Time):
+                    value = dt_time.fromisoformat(value)
+            except ValueError:
+                value = None
+        for key in column.foreign_keys:
+            if value is not None and key.column.table.name != "users":
+                exists = db.execute(key.column.table.select().where(key.column == value)).first()
+                if exists is None:
+                    value = None
+        values[column.key] = value
+    values["user_id"] = user.id
+    if values.get("id") is not None and db.get(model, values["id"]) is not None:
+        values.pop("id")
+    row = model(**values)
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _delete_task(db: Session, user: User, raw: dict) -> dict:
+    key, obj_id = raw.get("key"), _int(raw.get("id"))
+    task = db.query(StudyTask).filter(StudyTask.id == obj_id, StudyTask.user_id == user.id).first() if obj_id else None
+    if task is None:
+        return _fail(key, raw.get("title") or "任务", "任务不存在或已被删除")
+    focus_ids = [r.id for r in db.query(FocusRecord.id).filter(FocusRecord.task_id == task.id)]
+    child_ids = [r.id for r in db.query(StudyTask.id).filter(StudyTask.repeat_parent_id == task.id)]
+    undo = {"model": "task", "row": _row_snapshot(task), "focus_ids": focus_ids, "child_ids": child_ids}
+    title, summary = task.title, _task_line(_task_snapshot(task))
+    db.query(FocusRecord).filter(FocusRecord.task_id == task.id).update({"task_id": None})
+    db.query(StudyTask).filter(StudyTask.repeat_parent_id == task.id).update({"repeat_parent_id": None})
+    db.delete(task)
+    db.flush()
+    return {"key": key, "ok": True, "title": title, "id": obj_id, "summary": f"已删除（{summary}）", "undo": undo}
+
+
+def _delete_course(db: Session, user: User, raw: dict) -> dict:
+    key, obj_id = raw.get("key"), _int(raw.get("id"))
+    course = schedule.find_course(db, user, obj_id)
+    if course is None:
+        return _fail(key, raw.get("title") or "课程", "课程不存在或已被删除")
+    snap = _course_snapshot(user, course)
+    undo = {"model": "course", "row": _row_snapshot(course)}
+    name = course.course_name
+    db.delete(course)
+    db.flush()
+    return {"key": key, "ok": True, "title": name, "id": obj_id,
+            "summary": f"已从课表删除（{_course_line(snap)} · {snap['week_text']}）", "undo": undo}
+
+
+def _apply_deletes(db: Session, user: User, items: List[dict]) -> dict:
+    results = []
+    for raw in items:
+        if not isinstance(raw, dict):
+            results.append(_fail(None, "未知条目", "格式不正确"))
+        elif raw.get("target") == "course":
+            results.append(_delete_course(db, user, raw))
+        else:
+            results.append(_delete_task(db, user, raw))
+    return {"results": results, "plan": None}
+
+
+def undo_deletes(db: Session, user: User, message_id: int, proposal_id: str, keys: Optional[List[str]] = None) -> List[dict]:
+    """
+    撤销删除提案里已删除的条目：用消息 meta 里服务器保存的快照重建（只能恢复自己的消息里的）。
+    返回每条 {key, ok, title, reason?}；不提交事务。
+    """
+    message = db.query(ChatMessage).filter(ChatMessage.id == message_id, ChatMessage.user_id == user.id).first()
+    if message is None:
+        raise ApiError(404, "消息不存在或已被删除")
+    meta = load_meta(message)
+    proposal = next((p for p in meta.get("proposals") or [] if p.get("id") == proposal_id and p.get("type") == "deletes"), None)
+    if proposal is None:
+        raise ApiError(404, "删除提案不存在")
+    stored = proposal.get("results") or {}
+    wanted = set(keys) if keys else set(stored)
+    out = []
+    for key in sorted(wanted):
+        result = stored.get(key)
+        if not result or not result.get("ok") or result.get("undone") or not isinstance(result.get("undo"), dict):
+            out.append(_fail(key, (result or {}).get("title") or "条目", "没有可撤销的删除"))
+            continue
+        undo = result["undo"]
+        if undo.get("model") == "course":
+            row = undo.get("row") or {}
+            course = _row_restore(db, Timetable, row, user)
+            # 恢复到当前生效的那套课表（Q：多套课表），否则课不会出现在课表里
+            course.set_id = schedule.active_set(db, user, create=True).id
+            db.flush()
+            new_id = course.id
+        else:
+            task = _row_restore(db, StudyTask, undo.get("row") or {}, user)
+            if undo.get("focus_ids"):
+                db.query(FocusRecord).filter(FocusRecord.id.in_(undo["focus_ids"]), FocusRecord.user_id == user.id,
+                                             FocusRecord.task_id.is_(None)).update({"task_id": task.id},
+                                                                                   synchronize_session=False)
+            if undo.get("child_ids"):
+                db.query(StudyTask).filter(StudyTask.id.in_(undo["child_ids"]), StudyTask.user_id == user.id,
+                                           StudyTask.repeat_parent_id.is_(None)).update({"repeat_parent_id": task.id},
+                                                                                        synchronize_session=False)
+            new_id = task.id
+        result.update(undone=True, restored_id=new_id, summary="已撤销删除")
+        result.pop("undo", None)
+        # 恢复后换了 id 时同步到提案条目，之后可以再次删除
+        for item in proposal.get("items") or []:
+            if item.get("key") == key:
+                item["id"] = new_id
+        out.append({"key": key, "ok": True, "title": result.get("title"), "id": new_id, "summary": "已恢复"})
+    message.meta = json.dumps(meta, ensure_ascii=False, default=str)
+    db.flush()
+    return out
+
+
+def public_results(results: List[dict], undoable: bool = True) -> List[dict]:
+    """返回给前端的结果去掉撤销快照（快照只存在服务器的消息 meta 里）；undoable=False（没记到消息上）时不能撤销。"""
+    return [{k: v for k, v in r.items() if k != "undo"} | ({"can_undo": True} if r.get("undo") and undoable else {})
+            for r in results]
+
+
+def public_meta(meta: dict) -> dict:
+    """消息 meta 返回给前端前去掉删除提案里的撤销快照。"""
+    for proposal in meta.get("proposals") or []:
+        if proposal.get("type") == "deletes" and isinstance(proposal.get("results"), dict):
+            proposal["results"] = {k: public_results([v])[0] if isinstance(v, dict) else v
+                                   for k, v in proposal["results"].items()}
+    return meta
+
+
 def apply_proposal(db: Session, user: User, kind: str, items: List[dict], title: Optional[str] = None,
                    goal: Optional[str] = None, plan_id: Optional[int] = None) -> dict:
     """返回 {"results": [{key, ok, title, id?, summary?, reason?}], "plan": StudyPlan|None}。不提交事务。"""
@@ -811,6 +1042,8 @@ def apply_proposal(db: Session, user: User, kind: str, items: List[dict], title:
         return _apply_tasks(db, user, items, title, goal, plan_id)
     if kind == "courses":
         return _apply_courses(db, user, items)
+    if kind == "deletes":
+        return _apply_deletes(db, user, items)
     return _apply_changes(db, user, items)
 
 
@@ -853,7 +1086,7 @@ def record_results(db: Session, user: User, message_id: Optional[int], proposal_
         proposal["applied"] = True
         if plan_id:
             proposal["plan_id"] = plan_id
-    message.meta = json.dumps(meta, ensure_ascii=False)
+    message.meta = json.dumps(meta, ensure_ascii=False, default=str)
 
 
 def _proposal_note(proposal: dict) -> str:
@@ -877,6 +1110,15 @@ def _proposal_note(proposal: dict) -> str:
         lines = [f"{c.get('course_name')} {c.get('start_period')}-{c.get('end_period')}节 {c.get('week_text')}"
                  for c in items[:10]]
         return f"[课程提案 {len(items)} 门{status}] " + "；".join(lines)
+    if kind == "deletes":
+        undone = sum(1 for r in results.values() if r.get("undone"))
+        if proposal.get("applied"):
+            status = f"（已删除 {done - undone} 条" + (f"，撤销 {undone} 条" if undone else "") + \
+                     (f"，失败 {failed} 条" if failed else "") + "）"
+        else:
+            status = "（尚未确认删除）"
+        lines = [f"{c.get('title')}（{c.get('summary')}）" for c in items[:12]]
+        return f"[删除提案 {len(items)} 条{status}] " + "；".join(lines)
     lines = [f"{c.get('title')}：{c.get('summary')}" for c in items[:12]]
     return f"[修改提案 {len(items)} 条{status}] " + "；".join(lines)
 
@@ -1072,6 +1314,10 @@ def execute_tool(db: Session, user: User, name: str, args: dict) -> Tuple[dict, 
         if name == "propose_changes":
             proposal, result = build_change_proposal(db, user, args.get("items"), args.get("summary") or "")
             return result, proposal if proposal["items"] else None, False
+        if name == "propose_deletes":
+            proposal, result = build_delete_proposal(db, user, args.get("items"), args.get("task_filter"),
+                                                     args.get("summary") or "")
+            return result, proposal if proposal["items"] else None, False
         if name == "ask_user":
             proposal = build_ask(args.get("question"), args.get("options"))
             return {"ok": True, "note": "问题已展示给同学，本轮结束，等待回答。"}, proposal, True
@@ -1117,7 +1363,7 @@ def run_turn(db: Session, user: User, conversation_id: int, state: TurnState) ->
     if config is None:
         yield from _rule_turn(db, user, history, state)
         return
-    state.engine, state.model = "agent", f"{config.name} · {config.model}"
+    state.engine, state.model = "agent", f"{config.name} · {providers.model_label(config.model)}"
     yield _event("status", text="正在思考…" if llm.supports_thinking(config) else "正在理解你的需求…")
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + history
     tools = tool_definitions()

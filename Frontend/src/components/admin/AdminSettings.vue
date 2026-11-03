@@ -14,10 +14,27 @@ const clear = reactive({ webhook: false, secret: false })
 const SOURCE = { admin: '后台设置', env: '服务器 .env', none: '未配置' }
 const MAIL = { smtp: 'SMTP 发送', console: '仅写日志（未配置 SMTP）', memory: '测试模式' }
 
+// 服务器 DeepSeek Key 的每人每日 AI 额度（0 = 不限）
+const quota = reactive({ calls: 0, tokens: 0 })
 const fill = (data) => {
   view.value = data
   Object.assign(form, { webhook: '', secret: '', emails: data.feedback_notify_emails, public_url: data.public_url })
   Object.assign(clear, { webhook: false, secret: false })
+  Object.assign(quota, { calls: data.ai_daily_calls ?? 0, tokens: data.ai_daily_tokens ?? 0 })
+}
+const saveQuota = async () => {
+  const calls = Number(quota.calls)
+  const tokens = Number(quota.tokens)
+  if (![calls, tokens].every((n) => Number.isInteger(n) && n >= 0)) return ui.toast('请输入不小于 0 的整数', 'warning')
+  busy.value = true
+  try {
+    fill(await adminApi.saveSettings({ ai_daily_calls: calls, ai_daily_tokens: tokens }))
+    ui.success('AI 额度已保存，立即生效')
+  } catch (error) {
+    ui.fail(error)
+  } finally {
+    busy.value = false
+  }
 }
 onMounted(async () => {
   try {
@@ -109,6 +126,27 @@ const test = async () => {
         <button class="btn-ghost" type="button" :disabled="busy || (!view.feedback_webhook_set && !view.feedback_notify_emails)" @click="test"><Icon icon="lucide:send" width="15" />发送测试通知</button>
         <button class="btn-primary" type="button" :disabled="busy" @click="save">保存设置</button>
       </div>
+    </section>
+
+    <section class="card space-y-4 p-4 lg:order-3">
+      <h3 class="section-title flex items-center gap-2"><Icon icon="lucide:gauge" width="17" class="text-xp" />AI 每日额度（服务器 DeepSeek Key）</h3>
+      <p class="text-[11px] leading-5 text-ink-mute">
+        只限制使用服务器 Key 的请求（对话、规划、课表识别、讲义大纲、每周复盘都计入；一次对话回合算 1 次）。用户自己的 Key 与管理员不受限。0 表示不限。
+        <span v-if="!view.ai_env_configured" class="font-bold text-flame">服务器当前未配置 DEEPSEEK_API_KEY。</span>
+      </p>
+      <div class="grid grid-cols-2 gap-3">
+        <label>
+          <span class="label">每人每天次数</span>
+          <input v-model.number="quota.calls" class="field num" type="number" min="0" step="1" inputmode="numeric" />
+          <span class="mt-1 block text-[11px] text-ink-mute">{{ SOURCE[view.ai_limit_source?.calls] || '' }}</span>
+        </label>
+        <label>
+          <span class="label">每人每天 tokens</span>
+          <input v-model.number="quota.tokens" class="field num" type="number" min="0" step="10000" inputmode="numeric" />
+          <span class="mt-1 block text-[11px] text-ink-mute">{{ SOURCE[view.ai_limit_source?.tokens] || '' }}</span>
+        </label>
+      </div>
+      <button class="btn-primary w-full" type="button" :disabled="busy" @click="saveQuota">保存额度</button>
     </section>
 
     <aside class="card space-y-3 p-4 text-xs leading-5 text-ink-soft">

@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router'
 import ToastHost from '@/components/common/ToastHost.vue'
 import ConfirmHost from '@/components/common/ConfirmHost.vue'
 import RewardOverlay from '@/components/common/RewardOverlay.vue'
+import OnboardingTour from '@/components/common/OnboardingTour.vue'
 import { useAuthStore } from '@/stores/auth'
 import { syncThemeFromAccount } from '@/composables/useTheme'
 
@@ -25,6 +26,8 @@ watch(() => auth.user?.theme, (theme) => syncThemeFromAccount(theme), { immediat
     <!-- 底部弹层统一挂到这里，保证平板"手机框"演示时也只覆盖手机区域 -->
     <div id="overlay-root"></div>
     <ConfirmHost />
+    <!-- 新手教程（跨页面，所以挂在最外层） -->
+    <OnboardingTour />
     <RewardOverlay />
     <ToastHost />
   </div>

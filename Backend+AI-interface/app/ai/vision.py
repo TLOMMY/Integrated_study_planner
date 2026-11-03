@@ -19,7 +19,7 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.ai import llm
+from app.ai import llm, providers
 from app.ai.llm import LlmError, ModelConfig
 from app.core import timeutil
 from app.core.errors import ApiError
@@ -32,13 +32,14 @@ MAX_PDF_PAGES_TEXT = 4
 MAX_PDF_PAGES_IMAGE = 2
 MAX_TEXT_CHARS = 12000
 MAX_COURSES = 200
-VISION_TIMEOUT = 85
+# 识别请求的超时：前端等 150 秒，这里留出上传与 PDF 处理的余量。识别一律关闭思考（DeepSeek 默认会思考，慢 3-8 倍）
+VISION_TIMEOUT = 110
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 
 NO_VISION_MESSAGE = ("当前模型不支持图片识别，请在 AI 设置中添加支持视觉的模型（如 通义千问 qwen-vl、GLM-4V、GPT-4o），"
                      "或上传文字版 PDF")
-# 已知的纯文本模型：直接提示，省一次必然失败的请求
-_TEXT_ONLY = re.compile(r"^(?:deepseek-(?:chat|reasoner|coder)|moonshot-v1-\d+k|kimi-k2|glm-4-(?:flash|plus|air)|"
+# 已知的纯文本模型：直接提示，省一次必然失败的请求（DeepSeek 全系列目前都不支持图片）
+_TEXT_ONLY = re.compile(r"^(?:(?:[\w.-]+/)?deepseek-[\w.-]*|moonshot-v1-\d+k|kimi-k2|glm-4-(?:flash|plus|air)|"
                         r"qwen-(?:plus|turbo|max|long))(?:[-_.].*)?$", re.I)
 _VISION_HINT = re.compile(r"(?:vl|vision|4v|4o|omni|gemini|claude|gpt-4\.1|gpt-5|llava|pixtral|minicpm-v|qvq)", re.I)
 _NO_VISION_WORDS = ("image", "vision", "multimodal", "multi-modal", "image_url", "content type", "unknown variant",
@@ -186,15 +187,38 @@ def _messages(user: User, text: Optional[str], parts: List[dict]) -> List[dict]:
             {"role": "user", "content": [{"type": "text", "text": f"{context}\n请识别这张课表。"}, *parts]}]
 
 
-def _call(config: ModelConfig, messages: List[dict], with_images: bool) -> str:
-    config = dataclasses.replace(config, timeout=max(config.timeout, VISION_TIMEOUT))
+def model_text(config: ModelConfig) -> str:
+    return f"{config.name} · {providers.model_label(config.model)}"
+
+
+def no_vision_error(config: ModelConfig, source: str, detail: str = "") -> ApiError:
+    """模型不支持图片：说明是哪个模型、为什么走到了图片识别、怎么办。"""
+    if source == "pdf-image":
+        why = "这个 PDF 是扫描件或图片（提取不到文字），需要按图片识别"
+    else:
+        why = "图片需要支持视觉的模型才能识别"
+    message = (f"「{model_text(config)}」不支持图片识别：{why}。可以上传文字版 PDF（教务系统导出 / 打印成 PDF，"
+               f"能选中文字的那种，DeepSeek 也能识别），或在 AI 设置中添加支持视觉的模型（如 通义千问 qwen-vl、GLM-4V、GPT-4o）")
+    data = {"reason": "no_vision", "source": source, "model": model_text(config)}
+    if detail:
+        data["detail"] = detail
+    return ApiError(422, message, data)
+
+
+def _call(config: ModelConfig, messages: List[dict], with_images: bool, source: str = "image") -> str:
+    config = dataclasses.replace(config, timeout=VISION_TIMEOUT)
     try:
-        # 不少视觉模型不支持 response_format，图片请求直接靠提示词约束 JSON
-        return llm.chat(config, messages, json_mode=not with_images, temperature=0)
+        # 不少视觉模型不支持 response_format，图片请求直接靠提示词约束 JSON；结构化抽取一律关闭思考
+        return llm.chat(config, messages, json_mode=not with_images, temperature=0, thinking=False)
     except LlmError as error:
         if with_images and _is_vision_error(error):
-            raise ApiError(422, NO_VISION_MESSAGE, {"detail": error.message}) from None
-        raise ApiError(502, f"模型识别失败：{error.message}") from None
+            raise no_vision_error(config, source, error.message) from None
+        if error.message == "模型响应超时":
+            raise ApiError(504, f"「{model_text(config)}」{VISION_TIMEOUT} 秒内没有返回识别结果，请稍后重试；"
+                                "图片可以裁剪到只剩课表区域，或改用文字版 PDF",
+                           {"reason": "timeout", "model": model_text(config)}) from None
+        raise ApiError(502, f"模型识别失败：{error.message}",
+                       {"reason": "model_error", "model": model_text(config)}) from None
 
 
 def parse_model_output(reply: str) -> dict:
@@ -213,7 +237,7 @@ def parse_model_output(reply: str) -> dict:
             continue
     if salvaged:
         return {"courses": salvaged, **{k: v for k, v in data.items() if k in ("semester_start", "total_weeks")}}
-    raise ApiError(502, "模型没有返回可识别的课表，请换一张更清晰的图片或重试")
+    raise ApiError(502, "模型没有返回可识别的课表，请换一张更清晰的图片或重试", {"reason": "bad_output"})
 
 
 # ---------------------------------------------------------------- 入口
@@ -277,13 +301,16 @@ def _normalize(data: dict, user: User) -> Tuple[List[dict], List[dict], int, Opt
 def recognize_timetable(db: Session, user: User, config: ModelConfig, filename: str, content: bytes) -> dict:
     source, text, parts = _prepare(filename, content)
     if parts and not supports_vision_guess(config):
-        raise ApiError(422, NO_VISION_MESSAGE)
-    reply = _call(config, _messages(user, text, parts), with_images=bool(parts))
+        raise no_vision_error(config, source)
+    reply = _call(config, _messages(user, text, parts), with_images=bool(parts), source=source)
     courses, skipped, total, semester_start = _normalize(parse_model_output(reply), user)
     if not courses:
-        raise ApiError(422, "没有识别出任何课程，请换一张更清晰、完整的课表图片", {"skipped": skipped})
+        hint = "PDF 里" if source == "pdf-text" else "图片里"
+        raise ApiError(422, f"没有从{hint}识别出任何课程，请确认文件是完整的课表"
+                            + ("（含星期表头和节次列）" if source != "pdf-text" else ""),
+                       {"reason": "no_courses", "skipped": skipped, "source": source, "model": model_text(config)})
     return import_common.build_preview(
         db, user, file_name=filename or None, fmt="ai", courses=courses, skipped=skipped,
         semester=None, semester_start=semester_start, total_weeks=total,
-        source=source, model=f"{config.name} · {config.model}",
+        source=source, model=model_text(config),
     )

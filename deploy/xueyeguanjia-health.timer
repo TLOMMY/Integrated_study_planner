@@ -1,0 +1,14 @@
+# 每分钟检查一次后端：/etc/systemd/system/xueyeguanjia-health.timer
+#   systemctl list-timers xueyeguanjia-health.timer    查看下次运行时间
+#   journalctl -t xueyeguanjia-health -n 50            查看检查日志
+[Unit]
+Description=Run XueYeGuanJia health check every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+Unit=xueyeguanjia-health.service
+
+[Install]
+WantedBy=timers.target

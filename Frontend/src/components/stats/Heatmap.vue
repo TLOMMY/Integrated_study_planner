@@ -44,7 +44,7 @@ const totalDays = computed(() => props.heatmap.days.filter((d) => d.level > 0).l
               type="button"
               class="h-[14px] w-[14px] rounded-[4px] transition hover:ring-2 hover:ring-primary/40"
               :class="[COLORS[day.level], active?.date === day.date && 'ring-2 ring-ink']"
-              :aria-label="`${day.date} 专注 ${day.minutes} 分钟`"
+              :aria-label="`${day.date} 专注 ${day.minutes} 分钟，完成 ${day.tasks} 个任务${day.level > 0 ? '，已打卡' : ''}`"
               @click="active = day"
             />
           </div>
@@ -52,8 +52,8 @@ const totalDays = computed(() => props.heatmap.days.filter((d) => d.level > 0).l
       </div>
     </div>
     <div class="mt-3 flex items-center justify-between text-[11px] text-ink-mute">
-      <span v-if="active" class="font-semibold text-ink-soft">{{ dayjs(active.date).format('M月D日') }}：{{ formatMinutes(active.minutes) }} · 完成 {{ active.tasks }} 个任务</span>
-      <span v-else>近 {{ heatmap.weeks }} 周有 <b class="num text-primary">{{ totalDays }}</b> 天在学习</span>
+      <span v-if="active" class="font-semibold text-ink-soft">{{ dayjs(active.date).format('M月D日') }}：{{ formatMinutes(active.minutes) }} · 完成 {{ active.tasks }} 个任务{{ active.level > 0 ? ' · 已打卡' : '' }}</span>
+      <span v-else :title="heatmap.rule?.text">近 {{ heatmap.weeks }} 周有 <b class="num text-primary">{{ totalDays }}</b> 天打卡</span>
       <span class="flex items-center gap-1">少<i v-for="(c, i) in COLORS" :key="i" class="h-2.5 w-2.5 rounded-[3px]" :class="c" />多</span>
     </div>
   </div>

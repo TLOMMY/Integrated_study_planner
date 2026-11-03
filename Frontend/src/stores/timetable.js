@@ -18,6 +18,8 @@ export const useTimetableStore = defineStore('timetable', {
     courses: (state) => state.data?.courses || [],
     courseNames: (state) => [...new Set((state.data?.courses || []).map((c) => c.course_name))],
     meta: (state) => state.data,
+    /** 多套课表：{ active_id, active_name, items: [{id,name,is_active,semester,course_count}], max } */
+    sets: (state) => state.data?.sets || { active_id: null, active_name: '我的课表', items: [], max: 12 },
   },
 
   actions: {
@@ -101,6 +103,43 @@ export const useTimetableStore = defineStore('timetable', {
       if (!data) return
       this.data = data
       this.week = data.week
+    },
+
+    // ------------------------------------------------------------ 多套课表
+    /** 新建一套课表并（默认）切换过去。 */
+    async createSet(payload) {
+      const data = await timetableApi.createSet(payload)
+      this.week = null
+      this.applyPayload(data)
+      useUiStore().success(payload.activate === false ? `已新建「${payload.name}」` : `已新建并切换到「${payload.name}」`)
+      return data
+    },
+
+    async renameSet(set, name) {
+      this.applyPayload(await timetableApi.renameSet(set.id, name))
+      useUiStore().success('课表已重命名')
+    },
+
+    async activateSet(set) {
+      if (!set.id || set.is_active) return
+      this.applyPayload(await timetableApi.activateSet(set.id))
+      useUiStore().success(`已切换到「${set.name}」`)
+    },
+
+    /** 整套删除：二次确认，说明会删掉多少门课。 */
+    async removeSet(set) {
+      const ui = useUiStore()
+      const last = (this.data?.sets?.items || []).filter((s) => s.id).length <= 1
+      const ok = await ui.confirm({
+        title: `删除课表「${set.name}」？`,
+        message: `将删除这套课表及其中的 ${set.course_count} 门课程，无法恢复。${set.is_active ? (last ? '删除后课表为空，可重新导入或新建。' : '删除后会自动切换到另一套课表。') : ''}`,
+        confirmText: '整套删除',
+        danger: true,
+      })
+      if (!ok) return false
+      this.applyPayload(await timetableApi.removeSet(set.id))
+      ui.success(`已删除「${set.name}」`)
+      return true
     },
   },
 })

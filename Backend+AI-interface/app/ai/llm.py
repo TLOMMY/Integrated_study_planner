@@ -41,6 +41,29 @@ class ModelConfig:
     source: str = "user"  # user / env
     timeout: int = 45
     thinking: str = "high"
+    # 服务器 Key 的用量计数凭据（见 app/services/ai_quota.py）；用户自己的配置为 None
+    quota_ticket: Optional[str] = None
+
+
+# ---- AI 用量钩子。stage = check（发请求前，可抛 ApiError 429）/ start（请求成功）/ usage（token 用量）
+_usage_hook = None
+
+
+def set_usage_hook(hook) -> None:
+    global _usage_hook
+    _usage_hook = hook
+
+
+def _report(stage: str, config: "ModelConfig", usage: Optional[dict] = None) -> None:
+    if _usage_hook is None or not config.quota_ticket:
+        return
+    if stage == "check":
+        _usage_hook(stage, config, usage)  # 超额时抛出，阻止本次请求
+        return
+    try:
+        _usage_hook(stage, config, usage)
+    except Exception:  # noqa: BLE001 - 计数失败不能影响回复
+        pass
 
 
 def _strip_endpoint(base_url: str) -> str:
@@ -121,22 +144,49 @@ def _request(method: str, url: str, api_key: str, body: Optional[dict], timeout:
         raise LlmError("接口返回的不是 JSON，请确认地址是 OpenAI 兼容接口") from None
 
 
+def is_deepseek(config: ModelConfig) -> bool:
+    """DeepSeek 系列模型（deepseek-flash / deepseek-v4-pro 及旧别名）：默认开启思考，可显式关闭。"""
+    return "deepseek" in (config.model or "").lower()
+
+
+def thinking_body(config: ModelConfig, thinking: Optional[bool]) -> dict:
+    """
+    思考控制参数。thinking=None 不传（沿用服务端默认）；False 显式关闭；True 按 config.thinking 开启。
+    只对 DeepSeek 传——其他兼容服务不认识这些字段，可能直接 400。
+    """
+    if thinking is None or not is_deepseek(config):
+        return {}
+    if not thinking:
+        return {"thinking": {"type": "disabled"}}
+    return {"thinking": {"type": "enabled"}, "reasoning_effort": "max" if config.thinking == "max" else "high"}
+
+
 def chat(config: ModelConfig, messages: List[dict], json_mode: bool = False, temperature: float = 0.4,
-         max_tokens: Optional[int] = None) -> str:
+         max_tokens: Optional[int] = None, thinking: Optional[bool] = None) -> str:
+    """
+    非流式调用。thinking：None 不传思考参数；False 关闭思考（结构化抽取用，DeepSeek 快 3-8 倍）；
+    True 按 config.thinking 开启。
+    """
     body = {"model": config.model, "messages": messages, "temperature": temperature}
+    body.update(thinking_body(config, thinking))
     if max_tokens:
         body["max_tokens"] = max_tokens
     if json_mode:
         body["response_format"] = {"type": "json_object"}
     url = chat_url(config.base_url)
+    _report("check", config)
     try:
         data = _request("POST", url, config.api_key, body, config.timeout)
     except LlmError as error:
-        # 部分兼容服务不支持 response_format，去掉后重试一次；提示词本身已要求输出 JSON
-        if not (json_mode and error.status in (400, 422)):
+        # 部分兼容服务不支持 response_format / 思考参数，去掉后重试一次；提示词本身已要求输出 JSON
+        if error.status not in (400, 422) or not (json_mode or "thinking" in body):
             raise
-        body.pop("response_format")
+        for key in ("response_format", "thinking", "reasoning_effort"):
+            body.pop(key, None)
         data = _request("POST", url, config.api_key, body, config.timeout)
+    _report("start", config)
+    if isinstance(data, dict) and isinstance(data.get("usage"), dict):
+        _report("usage", config, data["usage"])
     try:
         content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
@@ -188,13 +238,15 @@ def extract_json(text: str) -> dict:
     raise LlmError("模型没有返回可解析的 JSON")
 
 
-def chat_json(config: ModelConfig, messages: List[dict], temperature: float = 0.4) -> dict:
-    return extract_json(chat(config, messages, json_mode=True, temperature=temperature))
+def chat_json(config: ModelConfig, messages: List[dict], temperature: float = 0.4,
+              thinking: Optional[bool] = False) -> dict:
+    """结构化抽取（课表识别、讲义大纲、每周复盘、规划草稿）：默认关闭思考，避免 DeepSeek 默认思考导致的长时间等待。"""
+    return extract_json(chat(config, messages, json_mode=True, temperature=temperature, thinking=thinking))
 
 
 def ping(config: ModelConfig) -> dict:
     started = time.perf_counter()
-    reply = chat(config, [{"role": "user", "content": "请只回复：OK"}], temperature=0, max_tokens=16)
+    reply = chat(config, [{"role": "user", "content": "请只回复：OK"}], temperature=0, max_tokens=16, thinking=False)
     return {"latency_ms": round((time.perf_counter() - started) * 1000), "reply": reply.strip()[:60]}
 
 
@@ -209,13 +261,12 @@ def list_models(config: ModelConfig) -> List[str]:
 # ---------------------------------------------------------------- 工具调用 + 流式输出（智能体用）
 def supports_thinking(config: ModelConfig) -> bool:
     """
-    是否给这次请求加思考参数。目前只有 DeepSeek 的 v4-pro 系列按
-    thinking={"type":"enabled"} + reasoning_effort 开启思考；其他模型不传，避免被拒。
+    这次流式请求是否开启思考。DeepSeek 的 deepseek-flash / deepseek-v4-pro 都按
+    thinking={"type":"enabled"} + reasoning_effort 开启思考（实测两者都支持，且默认就开）；其他模型不传，避免被拒。
     """
     if (config.thinking or "off") == "off":
         return False
-    model = (config.model or "").lower()
-    return "deepseek" in model and "pro" in model
+    return is_deepseek(config)
 
 
 @dataclass
@@ -302,10 +353,11 @@ def stream_chat(config: ModelConfig, messages: List[dict], tools: Optional[List[
     """
     body = {"model": config.model, "messages": messages, "stream": True, "stream_options": {"include_usage": True}}
     if supports_thinking(config):
-        body["thinking"] = {"type": "enabled"}
-        body["reasoning_effort"] = "max" if config.thinking == "max" else "high"
+        body.update(thinking_body(config, True))
     else:
         body["temperature"] = temperature
+        # 用户把思考强度设为"关闭"：DeepSeek 默认会思考，必须显式关闭
+        body.update(thinking_body(config, False))
     if tools:
         body["tools"] = tools
         if tool_choice:
@@ -313,6 +365,7 @@ def stream_chat(config: ModelConfig, messages: List[dict], tools: Optional[List[
     if max_tokens:
         body["max_tokens"] = max_tokens
     url = chat_url(config.base_url)
+    _report("check", config)
     try:
         response = _open_stream(url, config.api_key, body, config.timeout)
     except LlmError as error:
@@ -324,6 +377,7 @@ def stream_chat(config: ModelConfig, messages: List[dict], tools: Optional[List[
         body.pop("stream_options", None)
         body.setdefault("temperature", temperature)
         response = _open_stream(url, config.api_key, body, config.timeout)
+    _report("start", config)
 
     result = StreamResult()
     slots: Dict[int, dict] = {}
@@ -385,6 +439,8 @@ def stream_chat(config: ModelConfig, messages: List[dict], tools: Optional[List[
         close = getattr(response, "close", None)
         if callable(close):
             close()
+        if isinstance(result.usage, dict):
+            _report("usage", config, result.usage)
     calls = [slots[i] for i in sorted(slots) if slots[i]["function"]["name"]]
     for position, call in enumerate(calls):
         call["id"] = call["id"] or f"call_{position}"

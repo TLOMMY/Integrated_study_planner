@@ -488,7 +488,7 @@ def generate_draft(db: Session, user: User, message: str, days: Optional[int] = 
     ]
     if parsed.get("from_memory"):
         insights.append("沿用上一轮的科目：" + "、".join(parsed["subjects"]))
-    model_label = f"{config.name} · {config.model}" if provider == "llm" and config else "本地规则引擎"
+    model_label = f"{config.name} · {providers.model_label(config.model)}" if provider == "llm" and config else "本地规则引擎"
     return {
         "title": title,
         "goal": message.strip()[:200],

@@ -9,6 +9,8 @@ import { Icon } from '@iconify/vue'
 import { useAiStore } from '@/stores/ai'
 import { useUiStore } from '@/stores/ui'
 import { formatMinutes, relativeDay, todayStr } from '@/utils/dates'
+import { commitDate, groupTasksByDate } from '@/utils/proposalGroups'
+import AiBadge from './AiBadge.vue'
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -19,7 +21,8 @@ const ui = useUiStore()
 const busy = ref(false)
 const expanded = ref(false)
 
-const copy = (items) => items.map((t) => ({ ...t, links: t.links || [], edited: false }))
+// group：已提交的日期，只用于分组。编辑日期时只改 date，失焦 / 回车后才提交到 group（见 utils/proposalGroups）
+const copy = (items) => items.map((t) => ({ ...t, links: t.links || [], edited: false, group: t.date }))
 const items = ref(copy(props.proposal.items || []))
 const picked = reactive(new Set(items.value.filter((t) => !props.proposal.results?.[t.key]?.ok).map((t) => t.key)))
 watch(() => props.proposal.id, () => {
@@ -63,17 +66,14 @@ const localIssues = computed(() => {
 })
 const warningsOf = (t) => (t.edited ? [] : (t.warnings || []).filter(() => !done(t)))
 
-const groups = computed(() => {
-  // 只按日期分组；组内保持原来的顺序，改时间时条目不会跳动
-  const map = new Map()
-  const order = new Map(items.value.map((t, i) => [t.key, i]))
-  for (const t of [...items.value].sort((a, b) => String(a.date).localeCompare(String(b.date)) || order.get(a.key) - order.get(b.key))) {
-    if (!map.has(t.date)) map.set(t.date, [])
-    map.get(t.date).push(t)
-  }
-  return [...map.entries()].map(([date, list]) => ({ date, items: list, minutes: list.reduce((s, t) => s + Number(t.duration_minutes || 0), 0) }))
-})
+// 按已提交的日期分组：正在输入的日期不触发重排，输入框不会被重建
+const groups = computed(() => groupTasksByDate(items.value))
 const shown = computed(() => (expanded.value ? groups.value : groups.value.slice(0, 3)))
+const commit = (t) => {
+  if (!commitDate(t)) return
+  // 换到的那一天在折叠区以外时自动展开，避免条目"消失"
+  if (groups.value.findIndex((g) => g.items.includes(t)) >= 3) expanded.value = true
+}
 
 const selectable = computed(() => items.value.filter((t) => !done(t)))
 const chosen = computed(() => selectable.value.filter((t) => picked.has(t.key)))
@@ -111,7 +111,8 @@ const apply = async () => {
   if (!chosen.value.length) return
   busy.value = true
   try {
-    const payload = chosen.value.map(({ edited, warnings, ...rest }) => ({ ...rest, duration_minutes: Number(rest.duration_minutes) }))
+    items.value.forEach((t) => commitDate(t))
+    const payload = chosen.value.map(({ edited, warnings, group, ...rest }) => ({ ...rest, duration_minutes: Number(rest.duration_minutes) }))
     await ai.applyProposal(props.message, props.proposal, payload)
     // 成功的条目自动取消勾选；失败的保留勾选，修改后可直接重试
     items.value.forEach((t) => {
@@ -129,7 +130,7 @@ const apply = async () => {
 <template>
   <div class="overflow-hidden rounded-3xl border border-ink-line/70 bg-surface shadow-soft">
     <div class="bg-gradient-to-br from-primary to-xp px-4 py-3 text-on-primary">
-      <p class="flex items-center gap-1 text-[10px] font-bold opacity-80"><Icon icon="lucide:calendar-plus" width="12" />新建任务 · 可修改后导入</p>
+      <p class="flex items-center gap-1 text-[10px] font-bold"><span class="flex items-center gap-1 opacity-80"><Icon icon="lucide:calendar-plus" width="12" />新建任务 · 可修改后导入</span><AiBadge inverse class="ml-auto" /></p>
       <h3 class="mt-0.5 truncate text-base font-black">{{ proposal.title }}</h3>
       <p class="num mt-0.5 text-xs opacity-85">{{ items.length }} 个学习块 · {{ groups.length }} 天 · 合计 {{ formatMinutes(items.reduce((s, t) => s + Number(t.duration_minutes || 0), 0)) }}</p>
     </div>
@@ -170,7 +171,7 @@ const apply = async () => {
               </div>
 
               <div v-if="!done(t)" class="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
-                <input v-model="t.date" type="date" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink" :aria-label="`${t.title} 的日期`" @input="edit(t)" />
+                <input v-model="t.date" type="date" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink" :aria-label="`${t.title} 的日期`" @input="edit(t)" @blur="commit(t)" @keydown.enter.prevent="commit(t)" />
                 <input v-model="t.start_time" type="time" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink" :aria-label="`${t.title} 的开始时间`" @input="edit(t)" />
                 <span class="flex items-center gap-1 rounded-lg border border-ink-line bg-surface px-1.5 py-0.5">
                   <input v-model.number="t.duration_minutes" type="number" min="5" max="480" step="5" class="num w-11 bg-transparent text-[11px] text-ink outline-none" :aria-label="`${t.title} 的时长（分钟）`" @input="edit(t)" />

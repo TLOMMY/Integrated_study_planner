@@ -19,6 +19,8 @@ const usePeriods = ref(false)
 const busy = ref(false)
 const error = ref('')
 const result = ref(null)
+const setName = ref('')
+const activeSetName = computed(() => timetable.sets.active_name || '我的课表')
 
 const clean = computed(() => code.value.replace(/[\s-]/g, '').toUpperCase())
 const periodsDiffer = computed(() => {
@@ -45,6 +47,7 @@ watch(
     error.value = ''
     mode.value = 'merge'
     usePeriods.value = false
+    setName.value = ''
     timetable.ensure().catch(() => {})
   },
 )
@@ -67,12 +70,14 @@ const lookup = async () => {
 
 const doImport = async () => {
   if (mode.value === 'replace') {
-    const ok = await ui.confirm({ title: '覆盖本学期课表？', message: '会先清空你本学期的全部课程，再导入同学的课表。此操作无法撤销。', confirmText: '覆盖导入', danger: true })
+    const ok = await ui.confirm({ title: '覆盖当前课表？', message: `会先清空「${activeSetName.value}」里的全部课程，再导入同学的课表。此操作无法撤销。想保留原课表可选“新建一套”。`, confirmText: '覆盖导入', danger: true })
     if (!ok) return
   }
   busy.value = true
   try {
-    const data = await shareApi.importCourses(preview.value.code, { mode: mode.value, use_period_times: usePeriods.value })
+    const body = { mode: mode.value, use_period_times: mode.value !== 'new' && usePeriods.value }
+    if (mode.value === 'new' && setName.value.trim()) body.set_name = setName.value.trim()
+    const data = await shareApi.importCourses(preview.value.code, body)
     result.value = data
     timetable.applyPayload(data.timetable)
     ui.reward(data.reward)
@@ -86,7 +91,7 @@ const doImport = async () => {
 </script>
 
 <template>
-  <BottomSheet :open="open" title="用分享码导入" subtitle="导入同学分享的课表到你的当前学期" @close="emit('close')">
+  <BottomSheet :open="open" title="用分享码导入" subtitle="导入同学分享的课表：合并、另存为新课表或覆盖当前课表" @close="emit('close')">
     <!-- 导入结果 -->
     <div v-if="result" class="space-y-3">
       <div class="rounded-3xl p-4" :class="result.added_count ? 'bg-success-light' : 'bg-background'">
@@ -102,7 +107,7 @@ const doImport = async () => {
             <p class="mt-0.5 text-ink-soft">{{ s.reason }}</p>
           </li>
         </ul>
-        <p class="mt-2 text-[11px] text-ink-mute">想完全换成同学的课表，可返回选择“覆盖本学期”。</p>
+        <p class="mt-2 text-[11px] text-ink-mute">想完全换成同学的课表，可返回选择“新建一套”或“覆盖当前”。</p>
       </div>
     </div>
 
@@ -142,17 +147,22 @@ const doImport = async () => {
           </div>
         </li>
       </ul>
-      <div class="grid grid-cols-2 gap-2" role="radiogroup" aria-label="导入方式">
+      <div class="grid grid-cols-3 gap-2" role="radiogroup" aria-label="导入方式">
         <button type="button" role="radio" :aria-checked="mode === 'merge'" class="rounded-2xl border p-3 text-left" :class="mode === 'merge' ? 'border-primary bg-primary-light' : 'border-ink-line'" @click="mode = 'merge'">
           <p class="text-sm font-bold text-ink">合并</p>
           <p class="mt-0.5 text-[11px] text-ink-mute">保留我的课，冲突的跳过</p>
         </button>
+        <button type="button" role="radio" :aria-checked="mode === 'new'" class="rounded-2xl border p-3 text-left" :class="mode === 'new' ? 'border-primary bg-primary-light' : 'border-ink-line'" @click="mode = 'new'">
+          <p class="text-sm font-bold text-ink">新建一套</p>
+          <p class="mt-0.5 text-[11px] text-ink-mute">另存为新课表，原课表保留</p>
+        </button>
         <button type="button" role="radio" :aria-checked="mode === 'replace'" class="rounded-2xl border p-3 text-left" :class="mode === 'replace' ? 'border-danger bg-danger-light' : 'border-ink-line'" @click="mode = 'replace'">
-          <p class="text-sm font-bold text-ink">覆盖本学期</p>
-          <p class="mt-0.5 text-[11px] text-ink-mute">清空我的课，换成同学的</p>
+          <p class="text-sm font-bold text-ink">覆盖当前</p>
+          <p class="mt-0.5 text-[11px] text-ink-mute">清空「{{ activeSetName }}」换成同学的</p>
         </button>
       </div>
-      <label v-if="periodsDiffer" class="flex cursor-pointer items-start gap-2 rounded-2xl bg-flame-light px-3 py-2 text-xs text-ink-soft">
+      <input v-if="mode === 'new'" v-model="setName" class="field" maxlength="40" :placeholder="`${preview.owner_name}的课表`" aria-label="新课表名称" />
+      <label v-if="periodsDiffer && mode !== 'new'" class="flex cursor-pointer items-start gap-2 rounded-2xl bg-flame-light px-3 py-2 text-xs text-ink-soft">
         <input v-model="usePeriods" type="checkbox" class="mt-0.5 accent-primary" />
         <span>同学的节次时间和你不同，同时采用同学的节次时间（{{ preview.period_times.length }} 节）</span>
       </label>
