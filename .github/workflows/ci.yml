@@ -1,5 +1,6 @@
 # 学业管家 CI：push / PR 时跑后端测试、前端单测与构建；推送 v* 标签时额外构建未签名的安卓 APK 与 Windows 安装包，
-# 作为 Actions artifact 上传（不签名、不发布 Release、不需要任何 secret）。
+# 作为 Actions artifact 上传（不签名、不发布 Release）。
+# 推送到 main 且测试通过后，若配置了 DEPLOY_* 三个 Secret，则自动部署到服务器（见 deploy/setup-autodeploy.sh）。
 name: CI
 
 on:
@@ -14,7 +15,8 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # main 上可能正在部署，不能中途取消，新推送排队等待
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   backend:
@@ -60,6 +62,52 @@ jobs:
           name: web-dist
           path: Frontend/dist
           retention-days: 7
+
+  deploy:
+    name: 部署到服务器（仅 main）
+    # 测试全部通过后才部署；未配置 Secrets 时跳过（见 deploy/setup-autodeploy.sh）
+    # 推送到 main，或在 Actions 页面对 main 手动 Run workflow（用于测试 / 重新部署）
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - name: 检查部署配置
+        id: check
+        run: |
+          if [ -n "$DEPLOY_HOST" ] && [ -n "$DEPLOY_SSH_KEY" ] && [ -n "$DEPLOY_KNOWN_HOSTS" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::未配置 DEPLOY_HOST / DEPLOY_SSH_KEY / DEPLOY_KNOWN_HOSTS，跳过部署"
+          fi
+      - name: 通过 SSH 执行部署
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # 服务器端密钥被限定为只能执行 xueyeguanjia-deploy，这里不需要也不能指定命令
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o ServerAliveInterval=30 "deploy@$DEPLOY_HOST"
+      - name: 确认服务正常
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          for i in 1 2 3 4 5 6; do
+            if curl -fsS -m 10 "https://$DEPLOY_HOST/api/health" || curl -fsS -m 10 "http://$DEPLOY_HOST/api/health"; then
+              echo; echo "部署成功"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::部署后健康检查失败，请在服务器上查看 journalctl -u xueyeguanjia -n 50"
+          exit 1
+      - name: 清理密钥
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
 
   android:
     name: 安卓 APK（未签名，仅标签）

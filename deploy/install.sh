@@ -88,11 +88,17 @@ else
 fi
 
 echo "==> 1/$STEPS 安装系统依赖"
-apt-get update -y
 PKGS="git nginx python3 python3-venv python3-pip sqlite3 curl ca-certificates"
 [ "$MODE" = domain ] && PKGS="$PKGS certbot python3-certbot-nginx"
+# 自动部署时（SKIP_APT=1）依赖已齐全就跳过 apt，避免与系统自动更新抢锁
 # shellcheck disable=SC2086
-apt-get install -y $PKGS
+if [ "${SKIP_APT:-}" = 1 ] && dpkg -s $PKGS >/dev/null 2>&1; then
+  echo "    依赖已安装，跳过"
+else
+  apt-get update -y
+  # shellcheck disable=SC2086
+  apt-get install -y $PKGS
+fi
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2- | cut -d. -f1)" -lt 20 ]; then
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
   apt-get install -y nodejs
@@ -103,6 +109,8 @@ id xueyeguanjia >/dev/null 2>&1 || useradd --system --home "$ROOT" --shell /usr/
 mkdir -p "$SITE" "$DATA/feedback" "$DATA/health" /etc/xueyeguanjia /var/www/certbot /var/backups/xueyeguanjia
 
 echo "==> 3/$STEPS 拉取代码"
+# 代码目录属于 xueyeguanjia 用户，root 执行 git 需要声明信任
+git config --system --get-all safe.directory 2>/dev/null | grep -qx "$APP" || git config --system --add safe.directory "$APP"
 if [ -d "$APP/.git" ]; then git -C "$APP" pull --ff-only; else git clone --depth 1 "$REPO" "$APP"; fi
 
 echo "==> 4/$STEPS 后端：虚拟环境、依赖与配置"
@@ -153,6 +161,15 @@ echo "==> 7/$STEPS 运维：每日备份、恢复脚本、健康检查（每分�
 install -m 755 "$APP/deploy/backup.sh" /usr/local/bin/xueyeguanjia-backup
 install -m 755 "$APP/deploy/restore.sh" /usr/local/bin/xueyeguanjia-restore
 install -m 755 "$APP/deploy/healthcheck.sh" /usr/local/bin/xueyeguanjia-healthcheck
+# 自动部署（GitHub Actions）用：记录本次部署方式，xueyeguanjia-deploy 按同样方式重新部署
+install -m 755 "$APP/deploy/deploy-hook.sh" /usr/local/bin/xueyeguanjia-deploy
+{
+  printf 'DEPLOY_MODE=%q\n' "$MODE"
+  printf 'DEPLOY_EMAIL=%q\n' "$EMAIL"
+  printf 'DEPLOY_IP=%q\n' "$PUBLIC_IP"
+  printf 'DEPLOY_DOMAIN=%q\n' "$DOMAIN"
+} > /etc/xueyeguanjia/deploy.conf
+chmod 644 /etc/xueyeguanjia/deploy.conf
 echo "30 3 * * * root /usr/local/bin/xueyeguanjia-backup >> /var/log/xueyeguanjia-backup.log 2>&1" > /etc/cron.d/xueyeguanjia-backup
 cp "$APP/deploy/xueyeguanjia-health.service" "$APP/deploy/xueyeguanjia-health.timer" /etc/systemd/system/
 systemctl daemon-reload
