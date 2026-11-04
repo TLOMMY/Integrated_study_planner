@@ -8,92 +8,146 @@
     POLICE_BEIAN   公安备案号（可空）
     POLICE_CODE    公安备案号中的数字（用于查询链接，可空）
   截图来自仓库 docs/screenshots，安装时复制到 site/screenshots/。占位符未替换或为空时，备案链接自动隐藏。
+  截图一律放在固定宽高比的框里（.shot），图片用 object-fit: cover 从顶部裁切，任何屏幕宽度下都不会变形。
 -->
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>学业管家 · 课表、待办、专注与成长，一个 App 管好大学学习</title>
+<title>学业管家 · 课表、待办、专注与成长</title>
 <meta name="description" content="学业管家：导入课表、安排任务、番茄钟专注、打卡成长，AI 助手按你的空闲时段排复习计划。支持网页版、Windows 与安卓。" />
 <link rel="icon" href="__APP_URL__/favicon.svg" type="image/svg+xml" />
 <style>
   :root {
-    --primary: #4f6ef7; --primary-dark: #3b57e0; --primary-light: #eef1fe; --xp: #8b5cf6; --flame: #ff8a00;
-    --success: #10b981; --ink: #0f172a; --ink-soft: #475569; --ink-mute: #94a3b8; --line: #e2e8f0;
-    --bg: #f5f7fb; --surface: #fff;
+    --primary: #4f6ef7; --primary-dark: #3b57e0; --primary-light: #eef1fe; --xp: #8b5cf6;
+    --ink: #0f172a; --ink-soft: #475569; --ink-mute: #94a3b8; --line: #e2e8f0;
+    --bg: #f5f7fb; --surface: #fff; --radius: 20px;
   }
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
-  body { margin: 0; font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; }
+  body { margin: 0; font-family: "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", system-ui, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.6; -webkit-font-smoothing: antialiased; }
   a { color: inherit; }
-  img { max-width: 100%; display: block; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px; }
-  .nav { position: sticky; top: 0; z-index: 10; background: rgba(245, 247, 251, .88); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(226, 232, 240, .7); padding-top: env(safe-area-inset-top, 0px); }
-  .nav .wrap { display: flex; align-items: center; gap: 16px; height: 60px; }
+  img { display: block; max-width: 100%; height: auto; }
+  svg { display: block; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+
+  /* 截图框：宽高比固定，图片裁切填满，不变形 */
+  .shot { position: relative; overflow: hidden; background: #fff; }
+  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: top center; }
+  .browser { border-radius: 14px; box-shadow: 0 24px 60px rgba(15, 23, 42, .18); border: 1px solid rgba(15, 23, 42, .08); background: #fff; overflow: hidden; }
+  .browser .bar { height: 30px; display: flex; align-items: center; gap: 6px; padding: 0 12px; background: #f1f4f9; border-bottom: 1px solid var(--line); }
+  .browser .bar i { width: 10px; height: 10px; border-radius: 50%; background: #d7dce5; }
+  .browser .bar i:nth-child(1) { background: #ff6b6b; } .browser .bar i:nth-child(2) { background: #ffc145; } .browser .bar i:nth-child(3) { background: #3ccf7a; }
+  .browser .bar span { margin-left: 10px; flex: 1; max-width: 260px; height: 16px; border-radius: 8px; background: #fff; font-size: 10px; line-height: 16px; color: var(--ink-mute); padding: 0 8px; white-space: nowrap; overflow: hidden; }
+  .browser .shot { aspect-ratio: 16 / 10; }
+  .phone { border-radius: 30px; padding: 8px; background: #0f172a; box-shadow: 0 24px 50px rgba(15, 23, 42, .3); }
+  .phone .shot { aspect-ratio: 9 / 19.5; border-radius: 23px; }
+
+  /* 导航 */
+  .nav { position: sticky; top: 0; z-index: 20; background: rgba(245, 247, 251, .85); backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px); border-bottom: 1px solid rgba(226, 232, 240, .8); padding-top: env(safe-area-inset-top, 0px); }
+  .nav .wrap { display: flex; align-items: center; gap: 16px; height: 62px; }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 18px; text-decoration: none; }
-  .brand i { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; font-style: normal; background: linear-gradient(135deg, var(--primary), var(--xp)); }
-  .nav nav { margin-left: auto; display: flex; gap: 20px; font-size: 14px; font-weight: 700; color: var(--ink-soft); }
+  .brand b { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--xp)); }
+  .nav nav { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 14px; font-weight: 700; color: var(--ink-soft); }
   .nav nav a { text-decoration: none; }
   .nav nav a:hover { color: var(--primary); }
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 16px; padding: 13px 22px; font-weight: 900; font-size: 15px; text-decoration: none; transition: transform .15s, box-shadow .15s, background .15s; }
+  .nav nav a.go { color: #fff; background: var(--primary); padding: 7px 14px; border-radius: 12px; }
+  .nav nav a.go:hover { background: var(--primary-dark); color: #fff; }
+
+  /* 按钮 */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border-radius: 14px; padding: 13px 22px; font-weight: 900; font-size: 15px; text-decoration: none; transition: transform .15s, box-shadow .15s, background .15s, border-color .15s; }
   .btn:active { transform: scale(.97); }
-  .btn-primary { background: #fff; color: var(--primary-dark); box-shadow: 0 10px 30px rgba(15, 23, 42, .18); }
-  .btn-primary:hover { box-shadow: 0 14px 36px rgba(15, 23, 42, .24); }
-  .btn-ghost { background: rgba(255, 255, 255, .16); color: #fff; border: 1.5px solid rgba(255, 255, 255, .45); }
-  .btn-ghost:hover { background: rgba(255, 255, 255, .26); }
-  .btn-solid { background: var(--primary); color: #fff; }
+  .btn-solid { background: var(--primary); color: #fff; box-shadow: 0 10px 24px rgba(79, 110, 247, .3); }
   .btn-solid:hover { background: var(--primary-dark); }
-  .btn-outline { background: var(--surface); color: var(--primary-dark); border: 1.5px solid var(--line); }
-  .btn-outline:hover { border-color: var(--primary); }
-  .hero { background: linear-gradient(135deg, var(--primary) 0%, #6366f1 50%, var(--xp) 100%); color: #fff; overflow: hidden; }
-  .hero .wrap { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; padding-top: 72px; padding-bottom: 72px; }
-  .hero h1 { margin: 0; font-size: 42px; line-height: 1.2; font-weight: 900; letter-spacing: .5px; }
-  .hero h1 span { display: inline-block; }
-  .hero p.lead { margin: 18px 0 0; font-size: 18px; opacity: .92; max-width: 520px; }
+  .btn-outline { background: var(--surface); color: var(--ink); border: 1.5px solid var(--line); }
+  .btn-outline:hover { border-color: var(--primary); color: var(--primary-dark); }
+
+  /* 首屏 */
+  .hero { position: relative; overflow: hidden; padding: 72px 0 96px; background:
+      radial-gradient(900px 480px at 85% 0%, rgba(139, 92, 246, .18), transparent 60%),
+      radial-gradient(800px 500px at 0% 100%, rgba(79, 110, 247, .14), transparent 60%), var(--bg); }
+  .hero .wrap { display: grid; grid-template-columns: 1fr 1.15fr; gap: 56px; align-items: center; }
+  .badge { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; color: var(--primary-dark); background: var(--primary-light); padding: 6px 12px; border-radius: 999px; }
+  .hero h1 { margin: 18px 0 0; font-size: clamp(34px, 3.3vw, 46px); line-height: 1.18; word-break: keep-all; font-weight: 900; letter-spacing: .5px; }
+  .hero h1 em { font-style: normal; background: linear-gradient(90deg, var(--primary), var(--xp)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero .lead { margin: 18px 0 0; font-size: 17px; color: var(--ink-soft); max-width: 500px; }
   .hero .cta { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 12px; }
-  .hero .meta { margin-top: 18px; font-size: 13px; opacity: .8; }
-  .shot-hero { position: relative; }
-  .shot-hero .desk { border-radius: 18px; box-shadow: 0 30px 70px rgba(15, 23, 42, .35); border: 6px solid rgba(255, 255, 255, .25); }
-  .shot-hero .phone { position: absolute; right: -10px; bottom: -36px; width: 30%; border-radius: 22px; border: 5px solid #fff; box-shadow: 0 20px 50px rgba(15, 23, 42, .35); }
-  section.block { padding: 72px 0; }
-  .eyebrow { color: var(--primary); font-weight: 900; font-size: 13px; letter-spacing: 2px; }
-  h2 { margin: 6px 0 0; font-size: 32px; font-weight: 900; }
-  .sub { margin: 10px 0 0; color: var(--ink-soft); font-size: 16px; max-width: 640px; }
-  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 32px; }
-  .card { background: var(--surface); border-radius: 24px; padding: 22px; box-shadow: 0 2px 10px rgba(15, 23, 42, .05); border: 1px solid rgba(226, 232, 240, .7); }
-  .card .ic { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 22px; }
-  .card h3 { margin: 14px 0 6px; font-size: 17px; font-weight: 900; }
+  .hero .meta { margin-top: 18px; font-size: 13px; color: var(--ink-mute); }
+  .stage { position: relative; padding-right: 9%; padding-bottom: 6%; }
+  .stage .phone { position: absolute; right: 0; bottom: 0; width: 25%; }
+
+  /* 区块 */
+  section.block { padding: 88px 0; }
+  .head { max-width: 640px; }
+  .eyebrow { margin: 0; color: var(--primary); font-weight: 900; font-size: 13px; letter-spacing: 2px; }
+  h2 { margin: 8px 0 0; font-size: 34px; line-height: 1.25; font-weight: 900; }
+  .sub { margin: 12px 0 0; color: var(--ink-soft); font-size: 16px; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 40px; }
+  .card { background: var(--surface); border-radius: var(--radius); padding: 24px; border: 1px solid rgba(226, 232, 240, .8); box-shadow: 0 2px 10px rgba(15, 23, 42, .04); }
+  .ic { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; }
+  .ic svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .card h3 { margin: 16px 0 6px; font-size: 18px; font-weight: 900; }
   .card p { margin: 0; color: var(--ink-soft); font-size: 14px; }
-  .c1 { background: var(--primary-light); } .c2 { background: #ecfdf5; } .c3 { background: #fff4e5; } .c4 { background: #f3eeff; } .c5 { background: #fef2f2; } .c6 { background: #eef6ff; }
-  .gallery { margin-top: 32px; display: grid; grid-template-columns: 2fr 1fr; gap: 18px; align-items: start; }
-  .gallery figure { margin: 0; }
-  .gallery img { border-radius: 18px; box-shadow: 0 12px 34px rgba(15, 23, 42, .12); border: 1px solid var(--line); background: #fff; }
-  .gallery figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-mute); text-align: center; }
-  .phones { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-  .strip { margin-top: 18px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-  .dl { margin-top: 32px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-  .dl .card { display: flex; flex-direction: column; }
+  .t1 { background: #eef1fe; color: #4f6ef7; } .t2 { background: #e8f8f1; color: #0f9d6a; } .t3 { background: #fff3e3; color: #e07a00; }
+  .t4 { background: #fdeceb; color: #e5484d; } .t5 { background: #f2edff; color: #7c4dea; } .t6 { background: #e9f5ff; color: #0e7ac4; }
+
+  /* 功能展示：图文交替 */
+  .rows { margin-top: 48px; display: grid; gap: 72px; }
+  .row { display: grid; grid-template-columns: 1fr 1.35fr; gap: 56px; align-items: center; }
+  .row.flip { grid-template-columns: 1.35fr 1fr; }
+  .row.flip .text { order: 2; }
+  .row h3 { margin: 0; font-size: 26px; font-weight: 900; }
+  .row p { margin: 12px 0 0; color: var(--ink-soft); }
+  .row ul { margin: 16px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+  .row li { position: relative; padding-left: 26px; font-size: 15px; }
+  .row li::before { content: ""; position: absolute; left: 0; top: 4px; width: 16px; height: 16px; border-radius: 50%; background: var(--primary-light) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f6ef7' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12l5 5L19 7'/%3E%3C/svg%3E") center / 10px no-repeat; }
+
+  .phones { margin-top: 72px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 28px; }
+  .phones figure { margin: 0; }
+  .phones figcaption { margin-top: 12px; text-align: center; font-size: 14px; font-weight: 800; color: var(--ink-soft); }
+
+  .themes { margin-top: 40px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .themes figure { margin: 0; }
+  .themes .shot { aspect-ratio: 16 / 10; border-radius: 14px; border: 1px solid var(--line); box-shadow: 0 10px 26px rgba(15, 23, 42, .1); }
+  .themes figcaption { margin-top: 10px; text-align: center; font-size: 14px; font-weight: 800; color: var(--ink-soft); }
+
+  /* 下载 */
+  .dl { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .dl .card { display: flex; flex-direction: column; align-items: flex-start; }
   .dl .card p { flex: 1; }
-  .dl .card .btn { margin-top: 16px; }
-  .note { margin-top: 18px; font-size: 13px; color: var(--ink-mute); }
-  footer { border-top: 1px solid var(--line); padding: 28px 0 calc(28px + env(safe-area-inset-bottom, 0px)); color: var(--ink-mute); font-size: 13px; }
+  .dl .card .btn { margin-top: 20px; width: 100%; }
+  .logo { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; background: var(--bg); border: 1px solid var(--line); }
+  .logo svg { width: 40px; height: 40px; }
+  .note { margin-top: 20px; font-size: 13px; color: var(--ink-mute); }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 calc(28px + env(safe-area-inset-bottom, 0px)); color: var(--ink-mute); font-size: 13px; background: var(--surface); }
   footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
   footer a { text-decoration: none; }
   footer a:hover { color: var(--primary); }
   footer .beian { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
-  @media (max-width: 900px) {
-    .hero .wrap { grid-template-columns: 1fr; padding-top: 44px; padding-bottom: 64px; }
-    .hero h1 { font-size: 36px; }
+
+  @media (max-width: 960px) {
+    .hero { padding: 48px 0 72px; }
+    .hero .wrap { grid-template-columns: 1fr; gap: 44px; }
+    .hero h1 { font-size: 38px; }
     .grid, .dl { grid-template-columns: 1fr 1fr; }
-    .gallery { grid-template-columns: 1fr; }
-    .strip { grid-template-columns: repeat(2, 1fr); }
+    .row, .row.flip { grid-template-columns: 1fr; gap: 24px; }
+    .row.flip .text { order: 0; }
+    .phones { grid-template-columns: repeat(2, 1fr); max-width: 480px; margin-left: auto; margin-right: auto; }
+    .themes { grid-template-columns: 1fr 1fr; }
     .nav nav a.opt { display: none; }
   }
-  @media (max-width: 560px) {
+  @media (max-width: 600px) {
+    .wrap { padding: 0 18px; }
+    .hero h1 { font-size: 31px; }
+    h2 { font-size: 27px; }
+    section.block { padding: 64px 0; }
     .grid, .dl { grid-template-columns: 1fr; }
-    .hero h1 { font-size: 30px; }
-    h2 { font-size: 26px; }
-    .shot-hero .phone { display: none; }
+    .stage { padding-right: 14%; }
+    .stage .phone { width: 34%; border-radius: 22px; padding: 5px; }
+    .stage .phone .shot { border-radius: 18px; }
+    .phones { gap: 18px; }
     footer .beian { margin-left: 0; }
   }
 </style>
@@ -101,12 +155,14 @@
 <body>
 <header class="nav">
   <div class="wrap">
-    <a class="brand" href="#top"><i>🦉</i>学业管家</a>
+    <a class="brand" href="#top"><b aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M8 2v4M16 2v4M8 13l3 3 5-5"/></svg>
+    </b>学业管家</a>
     <nav aria-label="页面导航">
       <a class="opt" href="#features">功能</a>
-      <a class="opt" href="#screens">截图</a>
+      <a class="opt" href="#showcase">截图</a>
       <a href="#download">下载</a>
-      <a href="__APP_URL__/">网页版</a>
+      <a class="go" href="__APP_URL__/">打开网页版</a>
     </nav>
   </div>
 </header>
@@ -115,67 +171,140 @@
   <section class="hero">
     <div class="wrap">
       <div>
-        <h1><span>课表、待办、</span><span>专注与成长</span><br /><span>一个 App</span> <span>管好大学学习</span></h1>
-        <p class="lead">以课表为核心，把课程、任务、专注和成长放在同一个应用里：导入课表、安排任务、番茄钟专注、连续打卡升级，AI 助手会避开你的课，按空闲时段排复习计划。</p>
+        <span class="badge">面向大学生的学习规划应用</span>
+        <h1>课表、待办、专注与成长<br /><em>一个应用管好大学学习</em></h1>
+        <p class="lead">以课表为核心：导入课表、安排任务、番茄钟专注、连续打卡升级。AI 助手先看你的课表和空闲时段，再排复习计划，确认后才写入。</p>
         <div class="cta">
-          <a class="btn btn-primary" href="__APP_URL__/">打开网页版 →</a>
-          <a class="btn btn-ghost" href="#download">下载 Windows / 安卓</a>
+          <a class="btn btn-solid" href="__APP_URL__/">打开网页版 →</a>
+          <a class="btn btn-outline" href="#download">下载 Windows / 安卓</a>
         </div>
-        <p class="meta">免费 · 无广告 · 支持一键体验演示账号</p>
+        <p class="meta">免费 · 无广告 · 网页、Windows 与安卓数据同步</p>
       </div>
-      <div class="shot-hero">
-        <img class="desk" src="screenshots/desktop-home.png" alt="学业管家电脑端首页：今日任务、课程与专注概览" width="1440" height="900" />
-        <img class="phone" src="screenshots/mobile-home.png" alt="学业管家手机端首页" width="390" height="844" loading="lazy" />
+      <div class="stage">
+        <div class="browser">
+          <div class="bar"><i></i><i></i><i></i><span>app.xueyeguanjia.com</span></div>
+          <div class="shot"><img src="screenshots/desktop-home.png" alt="电脑端首页：今日任务、课程与专注概览" /></div>
+        </div>
+        <div class="phone"><div class="shot"><img src="screenshots/mobile-home.png" alt="手机端首页" /></div></div>
       </div>
     </div>
   </section>
 
-  <section class="block" id="features">
+  <section class="block" id="features" style="background: var(--surface)">
     <div class="wrap">
-      <p class="eyebrow">主要功能</p>
-      <h2>从开学导入课表，到期末复习冲刺</h2>
-      <p class="sub">手机优先设计，电脑上同样好用；数据在网页、Windows 与安卓之间自动同步。</p>
+      <div class="head">
+        <p class="eyebrow">主要功能</p>
+        <h2>从开学导入课表，到期末复习冲刺</h2>
+        <p class="sub">手机优先设计，电脑上同样好用；数据在网页、Windows 与安卓之间自动同步。</p>
+      </div>
       <div class="grid">
-        <article class="card"><div class="ic c1">📅</div><h3>课表</h3><p>Excel / 教务网页 / 截图与 PDF（AI 识别）三种导入方式，单双周、节次时间、多套课表、课表分享码与导出图片。</p></article>
-        <article class="card"><div class="ic c2">✅</div><h3>任务与日程</h3><p>快速添加、子任务、标签与清单、提醒时间；日 / 周 / 月视图，电脑端拖拽改期，自动避开上课时间。</p></article>
-        <article class="card"><div class="ic c3">⏱️</div><h3>专注</h3><p>番茄钟、白噪音与自己的歌单、防切出提醒；专注状态跨设备同步，按科目统计学习时长。</p></article>
-        <article class="card"><div class="ic c4">🔥</div><h3>成长</h3><p>连续打卡、经验与等级、成就徽章、学习热力图、断签保护卡、学习小组排行榜与每周学习报告。</p></article>
-        <article class="card"><div class="ic c5">✨</div><h3>AI 助手</h3><p>对话式规划：先看课表和空闲时段再排任务，可推荐 B 站课程、按讲义章节排复习；所有改动先出卡片，确认后才导入。</p></article>
-        <article class="card"><div class="ic c6">🎨</div><h3>多主题与离线</h3><p>默认、深色与多款玻璃主题；断网时仍可查看课表和任务。也可以接入自己的大模型 Key 或使用本地规则引擎。</p></article>
+        <article class="card"><div class="ic t1"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div><h3>课表</h3><p>教务网页、Excel、图片与 PDF 三种导入方式；单双周、节次时间、多套课表、分享码与导出图片。</p></article>
+        <article class="card"><div class="ic t2"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><h3>任务与日程</h3><p>快速添加、子任务、标签与清单、提醒时间；日 / 周 / 月视图，课程与任务排在同一张表里。</p></article>
+        <article class="card"><div class="ic t3"><svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M10 2h4"/></svg></div><h3>专注</h3><p>番茄钟关联任务，白噪音与自己的歌单；计时跨设备同步，按科目统计学习时长。</p></article>
+        <article class="card"><div class="ic t4"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4.1 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></div><h3>成长</h3><p>连续打卡、经验与等级、成就、学习热力图、断签保护卡、学习小组与每周学习报告。</p></article>
+        <article class="card"><div class="ic t5"><svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.8L20 10l-6.1 1.2L12 17l-1.9-5.8L4 10l6.1-1.2z"/><path d="M19 17l.6 1.9L21.5 19.5l-1.9.6L19 22l-.6-1.9-1.9-.6 1.9-.6z"/></svg></div><h3>AI 助手</h3><p>对话式规划：先看课表和空闲时段再排任务，可推荐课程视频、按讲义章节排复习；改动先出卡片，确认后才写入。</p></article>
+        <article class="card"><div class="ic t6"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0 0 20c.9 0 1.6-.7 1.6-1.6 0-.4-.2-.8-.4-1.1-.3-.3-.4-.7-.4-1.1 0-.9.7-1.6 1.6-1.6H16a6 6 0 0 0 6-6c0-4.9-4.5-8.6-10-8.6z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10.5" cy="6.8" r="1.2"/><circle cx="15.5" cy="7.5" r="1.2"/></svg></div><h3>多主题与离线</h3><p>默认、深色与四款玻璃质感主题；断网时仍可查看已加载的课表和任务。</p></article>
       </div>
     </div>
   </section>
 
-  <section class="block" id="screens" style="background: var(--surface)">
+  <section class="block" id="showcase">
     <div class="wrap">
-      <p class="eyebrow">截图</p>
-      <h2>看看它长什么样</h2>
-      <div class="gallery">
-        <figure><img src="screenshots/desktop-week.png" alt="电脑端周视图：课程与任务排在同一张日程表里" width="1440" height="900" loading="lazy" /><figcaption>周视图：课程与任务一目了然</figcaption></figure>
-        <div class="phones">
-          <figure><img src="screenshots/mobile-timetable.png" alt="手机端课表" width="390" height="844" loading="lazy" /><figcaption>课表</figcaption></figure>
-          <figure><img src="screenshots/mobile-focus.png" alt="手机端专注计时" width="390" height="844" loading="lazy" /><figcaption>专注</figcaption></figure>
+      <div class="head">
+        <p class="eyebrow">界面截图</p>
+        <h2>看看它长什么样</h2>
+      </div>
+      <div class="rows">
+        <div class="row">
+          <div class="text">
+            <h3>课表就是你的时间表</h3>
+            <p>按教学周显示节次网格，颜色区分课程；从教务系统导入后自动识别开学日期与总周数。</p>
+            <ul><li>单双周、不连续周次与冲突检测</li><li>多套课表一键切换</li><li>导出图片、分享码发给同学</li></ul>
+          </div>
+          <div class="browser"><div class="bar"><i></i><i></i><i></i><span>课表</span></div><div class="shot"><img src="screenshots/desktop-timetable.png" alt="电脑端课表：按教学周显示的节次网格" loading="lazy" /></div></div>
+        </div>
+        <div class="row flip">
+          <div class="text">
+            <h3>AI 先看课表，再排计划</h3>
+            <p>直接说"这周每天晚上复习高数一小时"，助手会查看课表、已有任务和空闲时段，信息不够时先追问。</p>
+            <ul><li>方案以卡片展示，可逐项改时间</li><li>确认后逐条写入，冲突会说明原因</li><li>删除操作可撤销</li></ul>
+          </div>
+          <div class="browser"><div class="bar"><i></i><i></i><i></i><span>AI 学习助手</span></div><div class="shot"><img src="screenshots/desktop-ai.png" alt="AI 学习助手对话页" loading="lazy" /></div></div>
+        </div>
+        <div class="row">
+          <div class="text">
+            <h3>看得见的进步</h3>
+            <p>专注时长、完成任务、连续打卡都会变成经验值和等级；每周自动生成学习报告与复盘。</p>
+            <ul><li>学习热力图与科目分布</li><li>15 项成就与断签保护卡</li><li>学习小组周榜</li></ul>
+          </div>
+          <div class="browser"><div class="bar"><i></i><i></i><i></i><span>成长</span></div><div class="shot"><img src="screenshots/desktop-stats.png" alt="成长页：等级、热力图与统计" loading="lazy" /></div></div>
         </div>
       </div>
-      <div class="strip">
-        <figure style="margin:0"><img src="screenshots/desktop-ai.png" alt="AI 助手对话与任务提案卡片" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
-        <figure style="margin:0"><img src="screenshots/desktop-stats.png" alt="成长页：热力图、等级与成就" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
-        <figure style="margin:0"><img src="screenshots/desktop-import.png" alt="课表导入：三种方式" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
-        <figure style="margin:0"><img src="screenshots/theme-night-indigo.png" alt="夜读靛主题" width="1440" height="900" loading="lazy" style="border-radius:14px;border:1px solid var(--line)" /></figure>
+
+      <div class="phones">
+        <figure><div class="phone"><div class="shot"><img src="screenshots/mobile-timetable.png" alt="手机端课表" loading="lazy" /></div></div><figcaption>课表</figcaption></figure>
+        <figure><div class="phone"><div class="shot"><img src="screenshots/mobile-day.png" alt="手机端日程" loading="lazy" /></div></div><figcaption>日程</figcaption></figure>
+        <figure><div class="phone"><div class="shot"><img src="screenshots/mobile-focus.png" alt="手机端专注计时" loading="lazy" /></div></div><figcaption>专注</figcaption></figure>
+        <figure><div class="phone"><div class="shot"><img src="screenshots/mobile-stats.png" alt="手机端成长页" loading="lazy" /></div></div><figcaption>成长</figcaption></figure>
+      </div>
+
+      <div class="themes">
+        <figure><div class="shot"><img src="screenshots/theme-apricot-dawn.png" alt="晨光杏桃主题" loading="lazy" /></div><figcaption>晨光杏桃</figcaption></figure>
+        <figure><div class="shot"><img src="screenshots/theme-mist-pine.png" alt="雾松青主题" loading="lazy" /></div><figcaption>雾松青</figcaption></figure>
+        <figure><div class="shot"><img src="screenshots/theme-night-indigo.png" alt="夜读靛主题" loading="lazy" /></div><figcaption>夜读靛</figcaption></figure>
+        <figure><div class="shot"><img src="screenshots/theme-terracotta-paper.png" alt="赤陶纸主题" loading="lazy" /></div><figcaption>赤陶纸</figcaption></figure>
       </div>
     </div>
   </section>
 
-  <section class="block" id="download">
+  <section class="block" id="download" style="background: var(--surface)">
     <div class="wrap">
-      <p class="eyebrow">下载</p>
-      <h2>选一个你顺手的方式</h2>
-      <div class="dl">
-        <article class="card"><div class="ic c1">🌐</div><h3>网页版</h3><p>无需安装，浏览器打开即用；手机浏览器里可"添加到主屏幕"。</p><a class="btn btn-solid" href="__APP_URL__/">打开网页版</a></article>
-        <article class="card"><div class="ic c4">🖥️</div><h3>Windows</h3><p>安装版或便携版（Windows 10 / 11），开机即可查看今日安排。</p><a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a></article>
-        <article class="card"><div class="ic c2">🤖</div><h3>安卓</h3><p>APK 安装包（Android 8 及以上），支持课前与任务本地提醒。</p><a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a></article>
+      <div class="head">
+        <p class="eyebrow">下载</p>
+        <h2>选一个顺手的方式</h2>
+        <p class="sub">三端使用同一个账号，数据实时同步。</p>
       </div>
-      <p class="note">安装包发布在 GitHub Releases，未做应用商店上架与代码签名，安装时系统可能提示"未知来源"，请从本页链接下载。</p>
+      <div class="dl">
+        <article class="card">
+          <div class="logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="19" fill="none" stroke="#4f6ef7" stroke-width="3"/><ellipse cx="24" cy="24" rx="8.5" ry="19" fill="none" stroke="#4f6ef7" stroke-width="3"/><path d="M5 24h38M8 14h32M8 34h32" stroke="#4f6ef7" stroke-width="3" fill="none"/></svg>
+          </div>
+          <h3>网页版</h3>
+          <p>无需安装，浏览器打开即用；手机浏览器（包括 iPhone）可"添加到主屏幕"像 App 一样使用。</p>
+          <a class="btn btn-solid" href="__APP_URL__/">打开网页版</a>
+        </article>
+        <article class="card">
+          <div class="logo" aria-hidden="true">
+            <!-- 经典四色视窗标志 -->
+            <svg viewBox="0 0 48 48">
+              <path fill="#f25022" d="M5 11.5c5.5-2.6 10.6-2.6 17 0v11c-6.4-2.6-11.5-2.6-17 0z"/>
+              <path fill="#7fba00" d="M25 12.3c6.4 2.7 11.5 2.7 18 0v11c-6.5 2.7-11.6 2.7-18 0z"/>
+              <path fill="#00a4ef" d="M5 25.5c5.5-2.6 10.6-2.6 17 0v11c-6.4-2.6-11.5-2.6-17 0z"/>
+              <path fill="#ffb900" d="M25 26.3c6.4 2.7 11.5 2.7 18 0v11c-6.5 2.7-11.6 2.7-18 0z"/>
+            </svg>
+          </div>
+          <h3>Windows</h3>
+          <p>安装版或免安装版，适用于 Windows 10 / 11。</p>
+          <a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a>
+        </article>
+        <article class="card">
+          <div class="logo" aria-hidden="true">
+            <!-- 绿色安卓机器人 -->
+            <svg viewBox="0 0 48 48" fill="#3ddc84">
+              <path d="M13 21a11 11 0 0 1 22 0z"/>
+              <path d="M16.2 10.8l-2.4-3.6M31.8 10.8l2.4-3.6" stroke="#3ddc84" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="19.2" cy="15.8" r="1.4" fill="#fff"/><circle cx="28.8" cy="15.8" r="1.4" fill="#fff"/>
+              <path d="M13 23h22v13a2.5 2.5 0 0 1-2.5 2.5h-17A2.5 2.5 0 0 1 13 36z"/>
+              <rect x="7.2" y="23" width="4.2" height="12" rx="2.1"/><rect x="36.6" y="23" width="4.2" height="12" rx="2.1"/>
+              <rect x="17.4" y="36" width="4.2" height="8" rx="2.1"/><rect x="26.4" y="36" width="4.2" height="8" rx="2.1"/>
+            </svg>
+          </div>
+          <h3>安卓</h3>
+          <p>APK 安装包，适用于 Android 7.0 及以上，支持课前与任务的本地提醒。</p>
+          <a class="btn btn-outline" href="__DOWNLOAD_URL__">前往下载</a>
+        </article>
+      </div>
+      <p class="note">安装包发布在 GitHub Releases。Windows 安装包未做代码签名，首次运行如提示"Windows 已保护你的电脑"，点"更多信息 → 仍要运行"；安卓安装时如提示"未知来源"，请在系统设置中允许。</p>
     </div>
   </section>
 </main>
