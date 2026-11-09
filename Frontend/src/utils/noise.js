@@ -46,6 +46,11 @@ export const noisePrefs = {
 export const guardEnabled = () => localStorage.getItem(GUARD_KEY) !== '0'
 export const setGuardEnabled = (on) => localStorage.setItem(GUARD_KEY, on ? '1' : '0')
 
+/** 严格模式（默认关闭，需同时开着防切出）：切出超过 10 秒自动暂停，离开的时间不计入专注。 */
+const STRICT_KEY = 'focus-strict'
+export const strictEnabled = () => guardEnabled() && localStorage.getItem(STRICT_KEY) === '1'
+export const setStrictEnabled = (on) => localStorage.setItem(STRICT_KEY, on ? '1' : '0')
+
 const SECONDS = 4
 
 function fillBuffer(ctx, kind) {

@@ -6,6 +6,8 @@ export const TAG_LEN = 12
 export const LIST_LEN = 20
 export const CHECKLIST_MAX = 30
 export const LINKS_MAX = 10
+// 与后端 schemas.NOTE_MAX 一致
+export const NOTE_MAX = 2000
 
 export const newItemId = () => Math.random().toString(36).slice(2, 10)
 

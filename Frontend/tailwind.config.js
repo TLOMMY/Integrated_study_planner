@@ -10,11 +10,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: { DEFAULT: v('primary'), dark: v('primary-dark'), light: v('primary-light'), soft: v('primary-soft') },
+        primary: { DEFAULT: v('primary'), dark: v('primary-dark'), light: v('primary-light'), soft: v('primary-soft'), mid: v('primary-mid') },
         background: v('background'),
         surface: v('surface'),
         ink: { DEFAULT: v('ink'), soft: v('ink-soft'), mute: v('ink-mute'), line: v('ink-line') },
-        flame: { DEFAULT: v('flame'), light: v('flame-light'), glow: v('flame-glow') },
+        // 时间轴：珠点中性色、空闲段（idle）、课程沙色（course）、链接
+        bead: v('bead'),
+        idle: { DEFAULT: v('idle'), bead: v('idle-bead'), ink: v('idle-ink') },
+        link: v('link'),
+        course: { DEFAULT: v('course'), line: v('course-line'), icon: v('course-icon') },
+        flame: { DEFAULT: v('flame'), light: v('flame-light'), glow: v('flame-glow'), deep: v('flame-deep') },
+        // 升级 / 等级徽章的金色
+        gold: { DEFAULT: v('gold'), light: v('gold-light') },
         xp: { DEFAULT: v('xp'), light: v('xp-light') },
         success: { DEFAULT: v('success'), light: v('success-light') },
         danger: { DEFAULT: v('danger'), light: v('danger-light'), soft: v('danger-soft') },
@@ -37,7 +44,7 @@ export default {
       },
       // 语义色当文字用：强调色在浅色内容层上对比度不够时，主题可以单独压深"文字版"（--c-*-text）
       textColor: {
-        primary: { DEFAULT: v('primary-text'), dark: v('primary-dark'), light: v('primary-light'), soft: v('primary-soft') },
+        primary: { DEFAULT: v('primary-text'), dark: v('primary-dark'), light: v('primary-light'), soft: v('primary-soft'), mid: v('primary-mid') },
         success: { DEFAULT: v('success-text'), light: v('success-light') },
         flame: { DEFAULT: v('flame-text'), light: v('flame-light') },
         danger: { DEFAULT: v('danger-text'), light: v('danger-light'), soft: v('danger-soft') },

@@ -144,6 +144,8 @@ class FocusRecord(Base):
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
     source = Column(String(40), default="timer")
+    # 这一轮切出 App / 页面的次数（开了防切出时才记录；旧记录和未开启时为空）
+    distractions = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=now)
 
 

@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useDesktop } from '@/composables/useDesktop'
+import { subjectBg, subjectInk, subjectOf } from '@/utils/subjects'
 
 const props = defineProps({
   data: { type: Object, required: true },
@@ -40,13 +41,15 @@ const blocksByDay = computed(() => {
   return result
 })
 
+// 分科色只在课表页用：浅色做块、深色做教室文字，课名一律墨色
 const blockStyle = ({ course, lane, width }) => ({
   top: `${(course.start_period - 1) * ROW.value + 2}px`,
   height: `${(course.end_period - course.start_period + 1) * ROW.value - 4}px`,
   left: `calc(${(lane / width) * 100}% + 2px)`,
   width: `calc(${100 / width}% - 4px)`,
-  background: course.in_week ? course.color : undefined,
+  background: course.in_week ? subjectBg(subjectOf(course)) : undefined,
 })
+const roomStyle = (course) => (course.in_week ? { color: subjectInk(subjectOf(course)) } : undefined)
 </script>
 
 <template>
@@ -62,8 +65,8 @@ const blockStyle = ({ course, lane, width }) => ({
 
     <div class="grid flex-1" :style="{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }">
       <div v-for="day in days" :key="day.day_of_week" class="min-w-0">
-        <div class="flex h-11 flex-col items-center justify-center rounded-xl" :class="day.is_today && 'bg-primary text-on-primary'">
-          <span class="text-[11px] font-black lg:text-sm">{{ day.label }}</span>
+        <div class="flex h-11 flex-col items-center justify-center rounded-xl" :class="day.is_today ? 'bg-primary text-on-primary' : 'text-ink'">
+          <span class="text-[11px] font-bold lg:text-sm">{{ day.label }}</span>
           <span class="num text-[9px] lg:text-[11px]" :class="day.is_today ? 'text-on-primary/80' : 'text-ink-mute'">{{ day.short }}</span>
         </div>
         <div class="relative" :style="{ height: `${periods.length * ROW}px` }">
@@ -81,14 +84,14 @@ const blockStyle = ({ course, lane, width }) => ({
             v-for="block in blocksByDay[day.day_of_week]"
             :key="block.course.id"
             type="button"
-            class="absolute overflow-hidden rounded-xl p-1.5 text-left shadow-sm transition active:scale-95 lg:p-2.5 lg:hover:brightness-105"
-            :class="block.course.in_week ? 'text-white' : 'border border-dashed border-ink-line bg-background text-ink-mute'"
+            class="absolute overflow-hidden rounded-[10px] px-[3px] py-1 text-left transition active:scale-95 lg:p-2.5 lg:hover:brightness-[1.03]"
+            :class="block.course.in_week ? 'text-ink' : 'border border-dashed border-ink-line bg-background text-ink-mute'"
             :style="blockStyle(block)"
             @click="emit('select', block.course)"
           >
-            <p class="line-clamp-3 text-[11px] font-bold leading-tight lg:text-[13px]">{{ block.course.course_name }}</p>
-            <p v-if="block.course.classroom" class="mt-0.5 truncate text-[9px] opacity-90 lg:mt-1 lg:text-[11px]">@{{ block.course.classroom }}</p>
-            <p v-if="block.course.teacher" class="hidden truncate text-[11px] opacity-80 lg:block">{{ block.course.teacher }}</p>
+            <p class="line-clamp-3 break-all text-[11px] font-bold leading-tight lg:text-[13px]">{{ block.course.course_name }}</p>
+            <p v-if="block.course.classroom" class="mt-0.5 truncate text-[9px] font-medium lg:mt-1 lg:text-[11px]" :style="roomStyle(block.course)">@{{ block.course.classroom }}</p>
+            <p v-if="block.course.teacher" class="hidden truncate text-[11px] text-ink-mute lg:block">{{ block.course.teacher }}</p>
             <p v-if="!block.course.in_week" class="mt-0.5 text-[8px]">非本周</p>
           </button>
         </div>

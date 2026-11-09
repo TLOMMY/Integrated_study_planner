@@ -241,7 +241,7 @@ const subjectOption = computed(() => ({
           <p v-if="!report.achievements.length" class="mt-3 rounded-2xl bg-background px-3 py-6 text-center text-xs text-ink-mute">这周没有新成就，继续加油</p>
           <ul v-else class="mt-3 grid grid-cols-2 gap-2">
             <li v-for="a in report.achievements" :key="a.code" class="flex items-center gap-2 rounded-2xl bg-background px-3 py-2">
-              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-flame-light to-flame text-on-flame"><Icon :icon="a.icon" width="18" /></span>
+              <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold-light text-xp"><Icon :icon="a.icon" width="18" /></span>
               <span class="min-w-0">
                 <span class="block truncate text-xs font-bold text-ink">{{ a.title }}</span>
                 <span class="block text-[10px] text-xp">+{{ a.xp }} XP</span>

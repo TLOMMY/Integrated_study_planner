@@ -26,7 +26,9 @@ export const FLOWS = [
     async run({ page, base }) {
       await page.goto(`${base}/login`)
       await page.getByText('一键体验演示账号').click()
-      await page.waitForURL(/\/today-task/)
+      // 登录后落在日程页；后面的任务流程在任务页做
+      await page.waitForURL(/\/view/)
+      await page.goto(`${base}/today-task`)
       await page.getByPlaceholder('搜索任务：标题、科目、备注').waitFor()
     },
   },
@@ -107,16 +109,54 @@ export const FLOWS = [
     },
   },
   {
+    name: '导入考试安排',
+    async run({ page, base, viewport }) {
+      const day = new Date(Date.now() + 40 * 86400000).toISOString().slice(0, 10)
+      const title = `端到端考试${viewport.name}${Date.now() % 10000}`
+      await page.goto(`${base}/timetable?exams=import`)
+      const sheet = page.getByRole('dialog', { name: '导入考试安排' })
+      await sheet.getByPlaceholder(/从教务系统或通知里复制过来/).fill(`${title}  ${day} 09:00-11:00  教一 201  座位号 15`)
+      await sheet.getByRole('button', { name: '识别', exact: true }).click()
+      await sheet.getByText('直接读取，未使用 AI').waitFor()
+      await sheet.getByRole('button', { name: '导入 1 场' }).click()
+      // 回到考试列表，能看到刚导入的，时间是一个区间
+      await sheet.getByText(title, { exact: true }).waitFor()
+      await sheet.getByText(/09:00-11:00/).first().waitFor()
+    },
+  },
+  {
+    name: 'AI 对话附件',
+    async run({ page, base }) {
+      await page.goto(`${base}/ai`)
+      await page.getByRole('button', { name: '添加图片或文件' }).click()
+      await page.getByRole('menuitem', { name: /文件/ }).waitFor()
+      await page.keyboard.press('Escape')
+      // 直接给隐藏的文件框塞一个文本文件（不弹系统对话框）
+      await page.locator('input[type="file"][accept*=".pdf"]').setInputFiles({ name: '复习笔记.txt', mimeType: 'text/plain', buffer: Buffer.from('第一章 极限\n夹逼准则与两个重要极限') })
+      const tray = page.getByLabel('待发送的附件')
+      await tray.getByText('复习笔记.txt').waitFor()
+      await tray.getByText(/文本 · \d+ KB/).waitFor()
+      // 只发附件：演示环境没有大模型，规则引擎说明读不了附件
+      await page.getByRole('button', { name: '发送', exact: true }).click()
+      // 手机上电脑版的会话栏仍在页面里（隐藏），只找看得见的
+      await page.getByText('看不了图片和文件').filter({ visible: true }).first().waitFor()
+      await page.getByText('复习笔记.txt').filter({ visible: true }).first().waitFor()
+      assert(!(await tray.isVisible().catch(() => false)), '发送后附件栏应清空')
+    },
+  },
+  {
     name: '切换主题（深色 → 默认）',
     async run({ page, base }) {
       await page.goto(`${base}/settings`)
       const html = page.locator('html')
+      // 玻璃主题的底色画在壁纸（background-image）上，颜色和图片一起比
+      const lightBg = await page.evaluate(() => (({ backgroundColor, backgroundImage }) => `${backgroundColor} ${backgroundImage}`)(getComputedStyle(document.querySelector('.phone'))))
       await page.locator('[data-theme-option="dark"]').click()
       await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark')
       const scheme = await html.evaluate((el) => getComputedStyle(el).colorScheme)
       assert(scheme.includes('dark'), `深色主题下 color-scheme 应为 dark，实际 ${scheme}`)
-      const bg = await page.evaluate(() => getComputedStyle(document.querySelector('.phone')).backgroundColor)
-      assert(bg !== 'rgb(245, 247, 251)', '深色主题下页面底色没有变化')
+      const bg = await page.evaluate(() => (({ backgroundColor, backgroundImage }) => `${backgroundColor} ${backgroundImage}`)(getComputedStyle(document.querySelector('.phone'))))
+      assert(bg !== lightBg, '深色主题下页面底色没有变化')
       // 刷新后仍是深色（本地 + 账号都已保存）
       await page.waitForTimeout(500)
       await page.reload()
@@ -154,14 +194,14 @@ export const FLOWS = [
     name: '断网可看',
     async run({ page, base, context }) {
       const nav = (label) => page.getByRole('link', { name: label }).filter({ visible: true }).first().click()
-      // 先在线访问一次日程（页面代码载入、接口数据写入离线缓存），再回到今日。
+      // 先在线访问一次日程（页面代码载入、接口数据写入离线缓存），再回到任务页。
       // 开发服务器没有 Service Worker，页面代码只能靠这一次载入；正式部署由 sw.js 预缓存。
       await page.goto(`${base}/today-task`)
       await page.getByPlaceholder('搜索任务：标题、科目、备注').waitFor()
       await nav('日程')
       await page.waitForURL(/\/view/)
       await page.waitForTimeout(800)
-      await nav(/^今日/)
+      await nav(/^任务/)
       await page.waitForURL(/\/today-task/)
       await page.waitForTimeout(300)
       await context.setOffline(true)
@@ -171,7 +211,7 @@ export const FLOWS = [
         await page.waitForURL(/\/view/)
         await page.getByText('网络已断开，正在显示离线数据').waitFor()
         // 离线写操作：给出提示
-        await nav(/^今日/)
+        await nav(/^任务/)
         await page.getByRole('button', { name: '添加任务' }).first().click()
         const sheet = page.getByRole('dialog')
         await sheet.getByPlaceholder('准备做什么？').fill('离线时新建')

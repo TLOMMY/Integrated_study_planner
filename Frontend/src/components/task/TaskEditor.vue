@@ -16,6 +16,7 @@ import {
   CHECKLIST_MAX,
   LINKS_MAX,
   LIST_LEN,
+  NOTE_MAX,
   TAG_LEN,
   TAG_MAX,
   computeRemindAt,
@@ -23,6 +24,7 @@ import {
   isBilibili,
   isHttpUrl,
   linkHost,
+  linksInNote,
   newItemId,
   remindOptions,
 } from './extras'
@@ -43,8 +45,25 @@ const form = reactive({})
 const plans = ref([])
 const saving = ref(false)
 const isEdit = computed(() => Boolean(props.task?.id))
-// AI 排出的任务可能是 50、40 分钟这类非预设时长，也要能显示与保留
-const durationOptions = computed(() => [...new Set([...DURATIONS, Number(form.duration_minutes) || 30])].sort((a, b) => a - b))
+const DURATION_MIN = 5
+const DURATION_MAX = 480
+/** 自定义时长：失焦时取整并限制在 5-480 分钟（与后端一致）。 */
+const durationLabel = (m) => (m >= 60 ? `${m / 60} 小时` : `${m} 分钟`)
+const clampDuration = () => {
+  const value = Math.round(Number(form.duration_minutes))
+  form.duration_minutes = Number.isFinite(value) && value > 0 ? Math.min(DURATION_MAX, Math.max(DURATION_MIN, value)) : 30
+}
+
+// 备注框随内容增高（最高约 10 行，之后滚动）
+const noteBox = ref(null)
+const growNote = () => {
+  const el = noteBox.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight + 2}px`
+}
+// 备注里的链接（AI 推荐的学习资源）也列在"学习资源"里，和任务卡片上看到的一致
+const noteLinks = computed(() => linksInNote(form.note).filter((l) => !form.links.some((o) => o.url === l.url)))
 
 const dateChips = computed(() => {
   const today = dayjs()
@@ -200,6 +219,7 @@ watch(
   async (open) => {
     if (!open) return
     reset()
+    nextTick(growNote)
     timetable.ensure().catch(() => {})
     tasks.loadGroups().catch(() => {})
     planApi.list('active').then((data) => (plans.value = data.items)).catch(() => {})
@@ -214,6 +234,7 @@ const submit = async () => {
   addTag()
   addStep()
   if (linkDraft.url.trim()) addLink()
+  clampDuration()
   const dueDate = form.due_date || null
   const startTime = dueDate && form.start_time ? form.start_time : null
   const payload = {
@@ -288,11 +309,24 @@ const startFocus = () => {
           <input v-model="form.start_time" type="time" class="field" :disabled="!form.due_date" />
         </label>
         <label class="block">
-          <span class="label">预计时长</span>
-          <select v-model.number="form.duration_minutes" class="field">
-            <option v-for="m in durationOptions" :key="m" :value="m">{{ m }} 分钟</option>
-          </select>
+          <span class="label">预计时长（分钟）</span>
+          <input
+            v-model.number="form.duration_minutes"
+            class="field num"
+            type="number"
+            inputmode="numeric"
+            :min="DURATION_MIN"
+            :max="DURATION_MAX"
+            step="5"
+            aria-label="预计时长，分钟"
+            @blur="clampDuration"
+          />
         </label>
+      </div>
+      <div class="-mt-2 flex flex-wrap gap-1.5" role="group" aria-label="常用时长">
+        <button v-for="m in DURATIONS" :key="m" type="button" class="chip px-2.5 py-1 text-[11px]" :class="Number(form.duration_minutes) === m && 'chip-active'" @click="form.duration_minutes = m">
+          {{ durationLabel(m) }}
+        </button>
       </div>
 
       <div>
@@ -442,8 +476,8 @@ const startFocus = () => {
 
       <!-- 学习资源链接 -->
       <div>
-        <span class="label flex items-center gap-1.5"><Icon icon="lucide:link" width="13" />学习资源 <span class="num font-semibold text-ink-mute">{{ form.links.length }}/{{ LINKS_MAX }}</span></span>
-        <ul v-if="form.links.length" class="mb-2 space-y-1.5">
+        <span class="label flex items-center gap-1.5"><Icon icon="lucide:link" width="13" />学习资源 <span class="num font-semibold text-ink-mute">{{ form.links.length + noteLinks.length }}</span></span>
+        <ul v-if="form.links.length || noteLinks.length" class="mb-2 space-y-1.5">
           <li v-for="(link, index) in form.links" :key="link.url" class="flex items-center gap-2 rounded-2xl bg-background px-3 py-2">
             <span v-if="isBilibili(link)" class="shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-black text-on-primary">B站</span>
             <Icon v-else icon="lucide:globe" width="14" class="shrink-0 text-ink-mute" />
@@ -454,6 +488,16 @@ const startFocus = () => {
             <button type="button" class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-mute hover:bg-surface hover:text-danger" :aria-label="`删除链接：${link.title}`" @click="removeLink(index)">
               <Icon icon="lucide:x" width="14" />
             </button>
+          </li>
+          <!-- AI 推荐的资源写在备注里：这里一并列出，改动请编辑下方备注 -->
+          <li v-for="link in noteLinks" :key="`note-${link.url}`" class="flex items-center gap-2 rounded-2xl bg-background px-3 py-2">
+            <span v-if="isBilibili(link)" class="shrink-0 rounded-md bg-primary px-1.5 py-0.5 text-[10px] font-black text-on-primary">B站</span>
+            <Icon v-else icon="lucide:globe" width="14" class="shrink-0 text-ink-mute" />
+            <a :href="link.url" target="_blank" rel="noopener noreferrer" class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold text-ink">{{ link.title || linkHost(link.url) }}</span>
+              <span class="block truncate text-[11px] text-ink-mute">{{ linkHost(link.url) }}</span>
+            </a>
+            <span class="shrink-0 rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-bold text-ink-mute">来自备注</span>
           </li>
         </ul>
         <div v-if="form.links.length < LINKS_MAX" class="space-y-2 rounded-2xl border border-dashed border-ink-line p-2">
@@ -466,8 +510,8 @@ const startFocus = () => {
       </div>
 
       <label class="block">
-        <span class="label">备注</span>
-        <textarea v-model="form.note" rows="2" class="field resize-none" placeholder="章节、页码、注意事项…" maxlength="1000" />
+        <span class="label flex items-center justify-between">备注<span v-if="form.note.length > NOTE_MAX - 200" class="num font-semibold text-ink-mute">{{ form.note.length }}/{{ NOTE_MAX }}</span></span>
+        <textarea ref="noteBox" v-model="form.note" rows="4" class="field max-h-72 min-h-[104px] resize-none leading-6" placeholder="章节、页码、注意事项…" :maxlength="NOTE_MAX" @input="growNote" />
       </label>
 
       <div v-if="isEdit && task.focus_minutes" class="flex items-center gap-2 rounded-2xl bg-flame-light px-4 py-3 text-xs font-bold text-flame">

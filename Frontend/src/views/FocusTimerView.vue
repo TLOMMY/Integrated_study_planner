@@ -120,7 +120,7 @@ const again = () => {
   focus.setup({ task, minutes: minutes.value })
 }
 
-const leave = () => (window.history.length > 1 ? router.back() : router.replace('/today-task'))
+const leave = () => (window.history.length > 1 ? router.back() : router.replace('/view'))
 </script>
 
 <template>

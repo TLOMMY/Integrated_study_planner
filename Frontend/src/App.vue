@@ -4,6 +4,7 @@ import { RouterView } from 'vue-router'
 import ToastHost from '@/components/common/ToastHost.vue'
 import ConfirmHost from '@/components/common/ConfirmHost.vue'
 import RewardOverlay from '@/components/common/RewardOverlay.vue'
+import CheckinCard from '@/components/common/CheckinCard.vue'
 import OnboardingTour from '@/components/common/OnboardingTour.vue'
 import { useAuthStore } from '@/stores/auth'
 import { syncThemeFromAccount } from '@/composables/useTheme'
@@ -29,6 +30,7 @@ watch(() => auth.user?.theme, (theme) => syncThemeFromAccount(theme), { immediat
     <!-- 新手教程（跨页面，所以挂在最外层） -->
     <OnboardingTour />
     <RewardOverlay />
+    <CheckinCard />
     <ToastHost />
   </div>
 </template>

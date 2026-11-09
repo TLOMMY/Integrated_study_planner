@@ -148,9 +148,13 @@ export const useAiStore = defineStore('ai', {
     },
 
     // ---------------------------------------------------------------- 对话
-    async send(text) {
+    /**
+     * attachments：已上传的附件 [{ id, name, kind, ... }]；onAccepted 在消息真正发出（显示到列表里）时调用，
+     * 输入框据此清掉附件栏。建对话失败时不调用，附件留在输入框里。
+     */
+    async send(text, attachments = [], onAccepted = null) {
       const message = String(text || '').trim()
-      if (!message || this.streaming) return
+      if ((!message && !attachments.length) || this.streaming) return false
       const ui = useUiStore()
       this.streaming = true
       try {
@@ -163,10 +167,12 @@ export const useAiStore = defineStore('ai', {
       } catch (error) {
         this.streaming = false
         ui.fail(error)
-        return
+        return false
       }
       const conversationId = this.currentId
-      this.messages.push({ id: `u${++seq}`, role: 'user', content: message, meta: {}, pending: true })
+      const ids = attachments.map((a) => a.id)
+      this.messages.push({ id: `u${++seq}`, role: 'user', content: message, meta: {}, attachments, pending: true })
+      onAccepted?.()
       this.messages.push({ id: `a${++seq}`, role: 'assistant', content: '', meta: emptyMeta(), live: true, status: '正在连接…' })
       const live = this.messages[this.messages.length - 1]
       const userTemp = this.messages[this.messages.length - 2]
@@ -176,7 +182,12 @@ export const useAiStore = defineStore('ai', {
         const index = this.messages.indexOf(live)
         if (data?.message && index !== -1) this.messages.splice(index, 1, data.message)
         const userIndex = this.messages.indexOf(userTemp)
-        if (data?.user_message && userIndex !== -1) this.messages.splice(userIndex, 1, data.user_message)
+        if (data?.user_message && userIndex !== -1) {
+          // 服务器的消息替换临时消息时，图片继续用本地缩略图，避免闪一下重新加载
+          const local = new Map((userTemp.attachments || []).map((a) => [a.id, a.localUrl]))
+          const saved = { ...data.user_message, attachments: (data.user_message.attachments || []).map((a) => ({ ...a, localUrl: local.get(a.id) || '' })) }
+          this.messages.splice(userIndex, 1, saved)
+        }
         if (data?.conversation) this.upsert(data.conversation, true)
       }
       const onEvent = (event, data) => {
@@ -209,9 +220,9 @@ export const useAiStore = defineStore('ai', {
       try {
         if (canStream()) {
           this.controller = new AbortController()
-          await streamChat(conversationId, message, onEvent, { signal: this.controller.signal })
+          await streamChat(conversationId, message, onEvent, { signal: this.controller.signal, attachments: ids })
         } else {
-          finish(await agentApi.chatSync(conversationId, message))
+          finish(await agentApi.chatSync(conversationId, message, ids))
         }
       } catch (error) {
         if (error?.name === 'AbortError') {

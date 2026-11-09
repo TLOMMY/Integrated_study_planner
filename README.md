@@ -38,25 +38,29 @@
 ### 学业管家的完整功能
 
 **课表管理**
-- 节次网格课表，按教学周切换，支持单双周与不连续周（如 `1-3周,18周`）
+- 节次网格课表，按教学周切换，支持单双周与不连续周（如 `1-3周,18周`）；课程按学科分色，课名用墨色、教室用学科深色
 - 课程时间冲突检测，自定义开学日期、总周数与每节课时间
-- 三种导入方式：教务系统网页（正方、强智、青果等常见格式）、Excel 课表文件、图片或 PDF 经大模型识别
+- 三种导入方式：教务系统网页（正方、强智、青果等常见格式，Android 客户端可在内置浏览器里登录后一键导入）、Excel 课表文件、图片或 PDF 经大模型识别；课表上印有节次时间时可一并更新
 - 课前 10 分钟提醒
 - 课表导出为图片；生成分享码，同学输入后即可导入同一份课表
-- 考试倒计时：记录考试日期，临近时提醒，并可由 AI 按剩余天数排出复习计划
+- 考试倒计时：记录考试日期与起止时间，临近时提醒，并可由 AI 按剩余天数排出复习计划
+- 导入考试安排：粘贴教务通知的文字，或上传 Excel、保存的网页、PDF、截图，一次导入整学期的考试；表格和文字直接读取，不使用 AI 次数，已添加过的考试自动跳过
 - 多套课表：可新建、重命名、切换与整套删除（如主修、辅修、不同学期），导入时可选择导入为新课表
 
 **任务与日程**
-- 今天、即将、已完成三种任务视图，逾期任务一键移到今天
+- 日程页：按时间比例排布的时间轴，课程、任务与空闲时段一目了然；顶部显示正在上或下一节课、近期考试
+- 一键排今天：在本地把待办和 14 天内的考前复习排进今天的空闲时间，不使用 AI 次数；先以虚线预览，可逐项去掉，确认后加入并可撤销
+- 点空闲时段即可快速新建任务，时长按空闲长度给出建议
+- 任务页分今天、即将、收集箱（未定日期）、已完成四个视图，逾期任务一键移到今天
 - 四级优先级、重复任务（每天、工作日、每周）、未定时间的全天任务
 - 标签、清单分组、子任务清单与单独的提醒时间；备注中的网址可直接点击打开
 - 按标题、科目、备注搜索全部任务，支持课程简称（如搜"高数"可找到"高等数学"）；多选后批量删除或修改日期
-- 日、周、月三种日程视图，课程与任务按时间顺序统一展示；周视图与月视图中可拖动任务改期
+- 日、周、月三种日程视图；电脑端可在日视图拖动任务改时间，在周视图与月视图中拖动改期
 
 **专注计时**
 - 番茄钟可关联具体任务，预设时长与自定义时长（1–180 分钟）
 - 基于时间戳计时，切换页面、锁屏或刷新不影响准确性；提前结束按实际分钟记录
-- 白噪音、粉红噪音、棕噪音与雨声；记录专注期间切出页面的次数；同一账号在多台设备间同步进行中的专注
+- 白噪音、粉红噪音、棕噪音与雨声；防切出提醒记录专注期间切出页面的次数，整轮没切出额外奖励经验值；严格模式下切出超过 10 秒自动暂停；同一账号在多台设备间同步进行中的专注
 - 我的音乐：导入本地 mp3、wav、ogg、m4a、flac 歌曲并管理歌单（排序、循环、随机），随专注开始与暂停；歌曲只保存在本设备
 
 **成长激励**
@@ -73,8 +77,10 @@
 - 可新建学习任务、添加课程，修改或删除已有的任务与课程；所有改动先以卡片形式展示，确认后才写入，删除后可撤销
 - 导入前可逐项修改日期与时间；逐条导入，失败的条目单独说明原因（如与课程时间冲突）
 - 支持语音输入；AI 生成的内容统一标注"AI 生成"
+- 发送附件：图片、PDF、Word、PPT、表格与文本，可拖进对话区或直接粘贴截图；图片先由视觉模型读成文字，只能读文字的模型也能讨论图片内容；附件里的文字只作为资料，不会被当作指令执行
 - 可联网搜索 B 站等平台的课程视频，链接写入任务备注
-- 上传讲义或 PDF 生成章节大纲，并据此排出复习计划
+- 上传讲义（PDF、PPT、Word、文本）生成章节大纲，并据此排出复习计划
+- AI 排出的任务可以不定日期，先放进收集箱，之后再排
 - 保存多个对话，可随时切换与继续；无模型时由本地规则引擎完成规划
 - 支持任何 OpenAI 兼容模型（DeepSeek、通义千问、Kimi、智谱、Ollama 等），密钥加密保存；可选择思考深度
 - 使用服务器提供的 DeepSeek 时可选择 V4.1 Flash（快）或 V4 Pro（强），每人每日有使用次数上限；添加自己的模型 Key 不受限制
@@ -100,7 +106,7 @@
 - 使用手册：按功能分节、可搜索；列出本地规则引擎能识别的输入写法与例句，界面中相关位置可一键跳转
 
 **个性化与多端**
-- 七种主题：默认、深色、跟随系统，以及晨光杏桃、雾松青、夜读靛、赤陶纸四种玻璃质感主题；主题随账号同步
+- 七种主题：默认（暖白与珊瑚色，玻璃质感）、深色（暖调深底）、跟随系统，以及晨光杏桃、雾松青、夜读靛、赤陶纸四种玻璃质感主题；主题随账号同步
 - 降低透明度与增强对比度两项无障碍选项
 - 手机、平板、电脑自适应布局；电脑端为侧边栏与多栏布局，支持键盘快捷键与作为独立窗口安装（PWA）
 - 断网时显示提示，已加载的页面仍可查看
@@ -178,6 +184,18 @@
 - 任务搜索与联网搜索支持课程简称；打卡规则明确为专注满 5 分钟或完成 1 个任务
 - 我的音乐与歌单、语音输入、新手教程、使用手册
 - 上线准备：每人每日 AI 用量上限与后台统计、用户协议与隐私政策、备案号展示、介绍下载页、持续集成、备份恢复与故障告警，登录锁定与限流记录重启后不丢失
+
+**1.2 · 界面改版与智能排程**
+- 界面改版：默认主题换成暖白与珊瑚色并保留玻璃质感，深色主题改为暖调深底；底部导航改为日程、课表、AI、任务、成长，中间的 AI 按钮打开快捷面板
+- 日程页改为按时间比例排布的时间轴，显示正在上或下一节课与近期考试；点空闲时段快速新建任务；电脑端拖动任务改时间
+- 一键排今天：本地计算，把待办和考前复习排进空闲时间，确认后加入，可撤销
+- 任务页新增收集箱，AI 排出的任务与学习计划可以不定日期
+- 课表按学科分色；识别课表时可一并读出节次时间；Android 客户端可在内置浏览器里登录教务系统后一键导入课表
+- 导入考试安排：粘贴文字或上传表格、网页、PDF、截图，考试新增结束时间
+- AI 对话可发送图片、PDF、Word、PPT 与表格；讲义大纲支持 PPT、Word 与文本；服务器配置视觉模型后，所选模型不能看图时自动改用它识别
+- 专注严格模式与"整轮没切出"奖励；打卡动效与升级动效
+- 修复 Android 客户端系统通知与语音输入失效的问题；安卓安装包同时使用 v1、v2、v3 签名
+- 运维：数据库每日备份同时上传到腾讯云对象存储
 
 ### 本地运行
 
@@ -287,13 +305,13 @@ data-import/            课表解析原型与示例课表
 ### 测试
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 后端 273 个用例，使用临时数据库，不访问外网
-cd Frontend && npm test                          # 前端 45 个单元测试
+cd Backend+AI-interface && python -m pytest     # 后端 324 个用例，使用临时数据库，不访问外网
+cd Frontend && npm test                          # 前端 57 个单元测试
 cd Frontend && npm run build                     # 生产构建
 cd e2e && npm install && npm test                # 端到端测试，使用本机 Edge 浏览器
 ```
 
-后端测试覆盖认证与数据隔离、课表与导入、任务、成长激励、AI 助手与模型接入、账号安全、反馈与管理后台、回收站与批量操作，并包含前后端接口契约测试：前端调用的每一个接口都必须在后端存在，否则测试失败。端到端测试在电脑与手机两种尺寸下走通登录、任务、专注、日程切换、主题切换与断网提示等核心流程。
+后端测试覆盖认证与数据隔离、课表与导入、任务、成长激励、AI 助手与模型接入、账号安全、反馈与管理后台、回收站与批量操作，并包含前后端接口契约测试：前端调用的每一个接口都必须在后端存在，否则测试失败。端到端测试在电脑与手机两种尺寸下走通登录、任务、专注、日程切换、导入考试安排、AI 对话附件、主题切换与断网提示等核心流程。
 
 ### 路线图
 
@@ -304,6 +322,7 @@ cd e2e && npm install && npm test                # 端到端测试，使用本�
 | 内部测试三 | ✅ 已完成 | 智能化与多端：多模型 AI、多种课表导入、学习偏好、账号安全、Windows 与 Android 客户端 |
 | 1.0 | ✅ 正式版 | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
 | 1.1 | ✅ 正式版 | 功能完善与上线准备：多套课表、AI 删除与撤销、课表识别提速、简称搜索、音乐与语音输入、新手教程与使用手册、AI 用量上限与合规 |
+| 1.2 | ✅ 正式版 | 界面改版与智能排程：珊瑚色玻璃质感界面、时间轴日程、一键排今天、收集箱、考试安排导入、AI 对话附件、异地备份 |
 
 ### 团队
 
@@ -333,25 +352,29 @@ Students typically switch between several apps, re-enter the same information an
 ### Features
 
 **Timetable**
-- Period-grid timetable by teaching week, with odd/even and non-contiguous weeks (e.g. `1-3, 18`)
+- Period-grid timetable by teaching week, with odd/even and non-contiguous weeks (e.g. `1-3, 18`); courses are coloured by subject, with course names in ink and classrooms in the subject's dark shade
 - Conflict detection; configurable semester start, number of weeks and period times
-- Three import methods: the school's academic-affairs web pages (ZhengFang, QiangZhi, QingGuo and similar), Excel files, and images or PDFs recognised by a large language model
+- Three import methods: the school's academic-affairs web pages (ZhengFang, QiangZhi, QingGuo and similar; the Android client can sign in inside a built-in browser and import in one tap), Excel files, and images or PDFs recognised by a large language model; period times printed on the timetable can be applied at the same time
 - Reminders 10 minutes before class
 - Export the timetable as an image; share it with a code that classmates can enter to import the same timetable
-- Exam countdown: record exam dates, get reminders as they approach, and let the AI build a revision plan for the days left
+- Exam countdown: record exam dates with start and end times, get reminders as they approach, and let the AI build a revision plan for the days left
+- Exam schedule import: paste the text of an exam notice, or upload an Excel file, saved web page, PDF or screenshot to add a whole semester's exams at once; tables and text are read directly without using AI calls, and exams already added are skipped
 - Multiple timetables: create, rename, switch and delete whole timetables (for example a major, a minor or different semesters), and import into a new timetable
 
 **Tasks and calendar**
-- Today, Upcoming and Completed views; move overdue tasks to today in one step
+- Schedule page: a proportional timeline that shows classes, tasks and free time together, with the current or next class and upcoming exams at the top
+- Plan my day: fits open tasks and revision for exams in the next 14 days into today's free time, computed locally without using AI calls; suggestions appear as dashed previews that can be removed one by one, then added after confirmation and undone if needed
+- Tap a free slot to create a task, with durations suggested from the length of the slot
+- Today, Upcoming, Inbox (no date) and Completed views; move overdue tasks to today in one step
 - Four priority levels, repeating tasks (daily, weekdays, weekly) and all-day tasks without a fixed time
 - Tags, lists, checklists and per-task reminder times; web links in notes open with a click
 - Search across titles, subjects and notes, including course abbreviations (searching "高数" finds "高等数学"); multi-select to delete or reschedule in bulk
-- Day, week and month views with courses and tasks shown together in chronological order; drag tasks to reschedule in the week and month views
+- Day, week and month views; on desktop, drag tasks to change their time in the day view and their date in the week and month views
 
 **Focus timer**
 - Pomodoro sessions linked to tasks, with presets and custom durations (1–180 minutes)
 - Timestamp-based timing that stays accurate across page switches, screen locks and reloads; early finishes are recorded by actual minutes
-- White, pink and brown noise and rain sounds; counts how often the user leaves the page during a session; an active session is synced across the user's devices
+- White, pink and brown noise and rain sounds; a leave-page guard counts how often the user leaves during a session and gives bonus experience for a session with no exits; strict mode pauses the timer after 10 seconds away; an active session is synced across the user's devices
 - My music: import local mp3, wav, ogg, m4a and flac songs and manage playlists (order, loop, shuffle) that start and pause with the focus session; songs are stored only on the device
 
 **Motivation**
@@ -367,9 +390,11 @@ Students typically switch between several apps, re-enter the same information an
 - Works as a conversation: reads the timetable, existing tasks and free slots first, asks follow-up questions when information is missing, then proposes a plan
 - Creates study tasks, adds courses, and changes or deletes existing tasks and courses; every change is shown as a card and written only after confirmation, and deletions can be undone
 - Voice input; AI-generated content is labelled "AI 生成"
+- Attachments: images, PDF, Word, PowerPoint, spreadsheets and text, added from the + menu, dragged into the conversation or pasted as screenshots; images are first read into text by a vision model, so text-only models can discuss them too; text inside attachments is treated as reference material, never as instructions
 - Dates and times can be edited item by item before import; items are imported one by one, and any that fail are listed with the reason (for example, a clash with a class)
 - Searches the web for course videos on Bilibili and similar platforms and adds the links to the task note
-- Generates a chapter outline from uploaded handouts or PDFs and builds a revision plan from it
+- Generates a chapter outline from uploaded handouts (PDF, PowerPoint, Word, text) and builds a revision plan from it
+- Tasks proposed by the AI can be left undated and go to the Inbox to be scheduled later
 - Keeps multiple conversations that can be resumed at any time; a local rule engine handles planning when no model is configured
 - Works with any OpenAI-compatible model (DeepSeek, Qwen, Kimi, GLM, Ollama and others) with encrypted key storage and a selectable reasoning depth
 - With the server's DeepSeek, users choose V4.1 Flash (fast) or V4 Pro (strong) under a daily per-user limit; users who add their own model key are not limited
@@ -395,7 +420,7 @@ Students typically switch between several apps, re-enter the same information an
 - A searchable user manual organised by feature, including the input patterns and example sentences the local rule engine understands, linked from the relevant places in the interface
 
 **Personalisation and multi-platform**
-- Seven themes: Default, Dark, Follow System, and four glass-style themes (Apricot Dawn, Mist Pine, Night Indigo, Terracotta Paper); the chosen theme syncs with the account
+- Seven themes: Default (warm white and coral with a glass finish), Dark (warm dark tones), Follow System, and four glass-style themes (Apricot Dawn, Mist Pine, Night Indigo, Terracotta Paper); the chosen theme syncs with the account
 - Accessibility options to reduce transparency and increase contrast
 - Responsive layout for phones, tablets and desktops; sidebar and multi-column layout on desktop with keyboard shortcuts, installable as a standalone window (PWA)
 - An offline notice appears when the connection drops, and pages already loaded remain viewable
@@ -450,6 +475,18 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 - Course abbreviations in task search and web search; the check-in rule is set to 5 minutes of focus or 1 completed task
 - My music and playlists, voice input, onboarding tour and user manual
 - Launch readiness: daily per-user AI limit with admin statistics, terms of service and privacy policy, ICP filing number display, landing and download page, continuous integration, backup restore and failure alerts; sign-in lockout and rate-limit records survive restarts
+
+**1.2 · Redesign and smarter scheduling**
+- Redesign: the default theme moves to warm white and coral while keeping the glass finish, and the dark theme uses warm dark tones; the bottom navigation becomes Schedule, Timetable, AI, Tasks and Growth, with the AI button in the middle opening a quick-action panel
+- The schedule page becomes a proportional timeline that shows the current or next class and upcoming exams; tap a free slot to add a task; drag tasks to change their time on desktop
+- Plan my day: fits open tasks and exam revision into free time, computed locally, added after confirmation and undoable
+- A new Inbox view for undated tasks; AI-proposed tasks and study plans can be left undated
+- Subject colours on the timetable; timetable recognition can also read printed period times; the Android client can import a timetable in one tap from the built-in browser after signing in to the academic-affairs system
+- Exam schedule import from pasted text, spreadsheets, web pages, PDFs or screenshots; exams gain an end time
+- Attachments in AI conversations (images, PDF, Word, PowerPoint, spreadsheets); handout outlines support PowerPoint, Word and text; when the server has a vision model configured, it reads images whenever the selected model cannot
+- Strict focus mode and a bonus for sessions with no exits; check-in and level-up animations
+- Fixes system notifications and voice input in the Android client; the Android package is signed with v1, v2 and v3 schemes
+- Operations: the daily database backup is also uploaded to Tencent Cloud Object Storage
 
 ### Run locally
 
@@ -547,13 +584,13 @@ data-import/            Timetable parsing prototypes and a sample timetable
 ### Tests
 
 ```bash
-cd Backend+AI-interface && python -m pytest     # 273 backend cases, temporary database, no network access
-cd Frontend && npm test                          # 45 frontend unit tests
+cd Backend+AI-interface && python -m pytest     # 324 backend cases, temporary database, no network access
+cd Frontend && npm test                          # 57 frontend unit tests
 cd Frontend && npm run build                     # production build
 cd e2e && npm install && npm test                # end-to-end tests using the local Edge browser
 ```
 
-Backend tests cover authentication and data isolation, timetable and import, tasks, motivation, the AI assistant and model integration, account security, feedback and the admin console, recycle bin and bulk actions, plus a contract test that fails if the frontend calls any endpoint the backend does not provide. End-to-end tests run the core flows (sign-in, tasks, focus, calendar views, theme switching, offline notice) at desktop and phone sizes.
+Backend tests cover authentication and data isolation, timetable and import, tasks, motivation, the AI assistant and model integration, account security, feedback and the admin console, recycle bin and bulk actions, plus a contract test that fails if the frontend calls any endpoint the backend does not provide. End-to-end tests run the core flows (sign-in, tasks, focus, calendar views, exam schedule import, AI attachments, theme switching, offline notice) at desktop and phone sizes.
 
 ### Roadmap
 
@@ -564,6 +601,7 @@ Backend tests cover authentication and data isolation, timetable and import, tas
 | Internal test 3 | ✅ Done | Intelligence and multi-platform: multi-model AI, multiple import methods, study preferences, account security, Windows and Android clients |
 | 1.0 | ✅ Released | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
 | 1.1 | ✅ Released | Refinement and launch readiness: multiple timetables, AI deletion with undo, faster timetable recognition, abbreviation search, music and voice input, onboarding and manual, AI usage limits and compliance |
+| 1.2 | ✅ Released | Redesign and smarter scheduling: coral glass interface, timeline schedule, plan my day, inbox, exam schedule import, AI attachments, off-site backup |
 
 ### Team
 

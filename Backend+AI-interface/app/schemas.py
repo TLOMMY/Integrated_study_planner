@@ -206,10 +206,14 @@ class _TaskExtras(_Base):
         return _clean_remind(value)
 
 
+# 任务备注上限；AI 写入的备注（含学习资源链接）最多 2000 字，手动编辑时要能原样保存
+NOTE_MAX = 2000
+
+
 class TaskIn(_TaskExtras):
     title: str = Field(min_length=1, max_length=200)
     subject: Optional[str] = Field(default=None, max_length=80)
-    note: Optional[str] = Field(default=None, max_length=1000)
+    note: Optional[str] = Field(default=None, max_length=NOTE_MAX)
     due_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
     start_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
     duration_minutes: int = Field(default=30, ge=5, le=480)
@@ -222,7 +226,7 @@ class TaskIn(_TaskExtras):
 class TaskUpdateIn(_TaskExtras):
     title: Optional[str] = Field(default=None, min_length=1, max_length=200)
     subject: Optional[str] = Field(default=None, max_length=80)
-    note: Optional[str] = Field(default=None, max_length=1000)
+    note: Optional[str] = Field(default=None, max_length=NOTE_MAX)
     due_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
     start_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
     duration_minutes: Optional[int] = Field(default=None, ge=5, le=480)
@@ -314,6 +318,8 @@ class FocusIn(_Base):
     subject: Optional[str] = Field(default=None, max_length=80)
     # 专注会话 id（跨设备同步用）：同一会话被两台设备先后提交时只记一次
     session_id: Optional[str] = Field(default=None, max_length=40)
+    # 切出次数：开了防切出时由前端提交，未开启时不传
+    distractions: Optional[int] = Field(default=None, ge=0, le=999)
 
     @field_validator("started_at")
     @classmethod
@@ -328,6 +334,8 @@ class PlanIn(_Base):
     goal: Optional[str] = Field(default=None, max_length=500)
     start_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
     end_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
+    # True：不设日期范围（如长期的学习路线）；否则没填的日期默认从今天起 7 天
+    undated: bool = False
 
     @model_validator(mode="after")
     def _range(self):
@@ -342,10 +350,30 @@ class PlanUpdateIn(_Base):
     start_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
     end_date: Optional[str] = Field(default=None, pattern=DATE_PATTERN)
     status: Optional[Literal["active", "completed", "archived"]] = None
+    # True：清空日期范围
+    undated: Optional[bool] = None
 
 
 class IdsIn(_Base):
     ids: List[int] = Field(min_length=1, max_length=200)
+
+
+class AutoPlanItemIn(_Base):
+    """一键排程预览里的一条（前端可能删掉了几条、改了勾选）。"""
+
+    key: Optional[str] = Field(default=None, max_length=10)
+    kind: Literal["task", "exam", "review"]
+    task_id: Optional[int] = None
+    title: str = Field(min_length=1, max_length=200)
+    subject: Optional[str] = Field(default=None, max_length=80)
+    date: str = Field(pattern=DATE_PATTERN)
+    start_time: str = Field(pattern=TIME_PATTERN)
+    minutes: int = Field(ge=5, le=480)
+    priority: int = Field(default=0, ge=0, le=3)
+
+
+class AutoPlanCommitIn(_Base):
+    items: List[AutoPlanItemIn] = Field(min_length=1, max_length=30)
 
 
 class TaskBatchIn(_Base):
@@ -575,7 +603,15 @@ class ConversationUpdateIn(_Base):
 
 
 class AgentChatIn(_Base):
-    message: str = Field(min_length=1, max_length=2000)
+    # 只发附件时可以不写字
+    message: str = Field(default="", max_length=2000)
+    attachments: List[int] = Field(default_factory=list, max_length=4)
+
+    @model_validator(mode="after")
+    def _not_empty(self):
+        if not self.message.strip() and not self.attachments:
+            raise ValueError("请输入消息或添加附件")
+        return self
 
 
 class ProposalApplyIn(_Base):
@@ -613,10 +649,11 @@ class ExamIn(_Base):
     subject: Optional[str] = Field(default=None, max_length=80)
     exam_date: str = Field(pattern=DATE_PATTERN)
     start_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
+    end_time: Optional[str] = Field(default=None, pattern=TIME_PATTERN)
     location: Optional[str] = Field(default=None, max_length=100)
     note: Optional[str] = Field(default=None, max_length=500)
 
-    @field_validator("start_time", "subject", "location", "note", mode="before")
+    @field_validator("start_time", "end_time", "subject", "location", "note", mode="before")
     @classmethod
     def _blank_to_none(cls, value):
         return None if isinstance(value, str) and not value.strip() else value

@@ -223,14 +223,27 @@ def submit_feedback(payload: FeedbackIn, request: Request, user: CurrentUser, db
     return ok({"id": item.id, "txt_id": name.removesuffix(".txt"), "images": images}, "感谢反馈！我们会尽快处理")
 
 
-@router.get("/mine", summary="我的反馈：处理状态与管理员回复")
-def my_feedback(user: CurrentUser, db: DB, limit: int = 50):
+@router.get("/mine", summary="我的反馈：处理状态与管理员回复（已处理且回复已读超过 7 天的默认不返回）")
+def my_feedback(user: CurrentUser, db: DB, limit: int = 50, all: bool = False):
     items = (
         db.query(Feedback).filter(Feedback.user_id == user.id)
         .order_by(Feedback.id.desc()).limit(max(1, min(limit, 100))).all()
     )
     unread = sum(1 for item in items if item.user_unread)
-    return ok({"items": [feedback_to_dict(item) for item in items], "unread": unread})
+    shown = items if all else [item for item in items if not _settled(item)]
+    return ok({"items": [feedback_to_dict(item) for item in shown], "unread": unread,
+               "hidden": len(items) - len(shown)})
+
+
+# 已解决 / 已关闭、回复已读，并且这么多天没有变化的反馈，不再出现在用户的列表里（服务器上保留，管理员照常可见）
+SETTLED_HIDE_DAYS = 7
+
+
+def _settled(item: Feedback) -> bool:
+    if (item.status or "open") not in ("resolved", "closed") or item.user_unread:
+        return False
+    changed = item.updated_at or item.replied_at or item.created_at
+    return changed is not None and timeutil.now() - changed >= timedelta(days=SETTLED_HIDE_DAYS)
 
 
 @router.post("/{feedback_id}/read", summary="把某条反馈的回复标记为已读")

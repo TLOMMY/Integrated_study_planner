@@ -37,7 +37,7 @@ def _resolve_sqlite_url(url: str) -> str:
 
 class Settings:
     APP_NAME = "智能学习规划系统"
-    APP_VERSION = "1.1.0"
+    APP_VERSION = "1.2.0"
 
     DATABASE_URL: str = _resolve_sqlite_url(_env("DATABASE_URL", default="sqlite:///./study_planner.db"))
 
@@ -51,6 +51,10 @@ class Settings:
     DEEPSEEK_API_URL: str = _env("DEEPSEEK_API_URL", default="https://api.deepseek.com/chat/completions")
     DEEPSEEK_MODEL: str = _env("DEEPSEEK_MODEL", default="deepseek-chat")
     DEEPSEEK_TIMEOUT: int = int(_env("DEEPSEEK_TIMEOUT", default="45"))
+    # 服务器的视觉模型（火山方舟 · 豆包）：DeepSeek 不能看图，课表图片、扫描版 PDF 由它识别；计入每日 AI 额度
+    ARK_API_KEY: Optional[str] = _env("ARK_API_KEY")
+    ARK_BASE_URL: str = _env("ARK_BASE_URL", default="https://ark.cn-beijing.volces.com/api/v3")
+    ARK_MODEL: str = _env("ARK_MODEL", default="")
 
     # 用户自定义模型的超时；以及是否允许填写本机/内网地址（本地 Ollama 需要）。
     # 公网部署时建议设为 0，防止服务器被当作跳板访问内网。

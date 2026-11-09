@@ -69,7 +69,7 @@ const logout = async () => {
 
 <template>
   <div class="scrollbar-hide h-full overflow-y-auto pb-24 lg:pb-10">
-    <section class="bg-gradient-to-b from-primary-light to-background px-5 pb-6 pt-[calc(var(--safe-top)+16px)]">
+    <section class="bg-primary-light/60 px-5 pb-6 pt-[calc(var(--safe-top)+16px)]">
       <button class="icon-btn lg:invisible" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
       <div class="mt-2 flex flex-col items-center text-center">
         <button class="relative flex h-24 w-24 items-center justify-center rounded-full bg-surface text-5xl shadow-soft" type="button" aria-label="更换头像" @click="sheet = 'avatar'">
@@ -108,7 +108,7 @@ const logout = async () => {
             <span class="block text-[11px] text-ink-mute">页面打开时，上课前 10 分钟提醒</span>
           </span>
           <span class="relative h-6 w-11 rounded-full transition" :class="reminderEnabled ? 'bg-primary' : 'bg-ink-line'">
-            <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" :class="reminderEnabled ? 'left-[22px]' : 'left-0.5'" />
+            <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="reminderEnabled ? 'left-[22px]' : 'left-0.5'" />
           </span>
         </button>
         <RouterLink to="/plans" class="flex items-center gap-3 px-4 py-3.5">

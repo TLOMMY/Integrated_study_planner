@@ -22,6 +22,8 @@ XP_TASK = 10
 XP_TASK_HIGH = 15
 XP_PER_FOCUS_MINUTE = 1
 XP_POMODORO_BONUS = 5
+# 开着防切出、整轮一次都没切出的完整番茄，再加一点
+XP_NO_DISTRACTION = 3
 XP_DAILY_GOAL = 20
 XP_PLAN_COMPLETE = 30
 FOCUS_XP_DAILY_CAP = 300
@@ -108,7 +110,7 @@ def revoke(db: Session, user_id: int, reason: str, ref: str) -> int:
 def focus_xp_today(db: Session, user_id: int, day: date) -> int:
     return int(
         db.query(func.coalesce(func.sum(XpEvent.amount), 0))
-        .filter(XpEvent.user_id == user_id, XpEvent.event_date == day, XpEvent.reason.in_(["focus", "pomodoro"]))
+        .filter(XpEvent.user_id == user_id, XpEvent.event_date == day, XpEvent.reason.in_(["focus", "pomodoro", "no_distraction"]))
         .scalar()
     )
 
@@ -419,6 +421,7 @@ class RewardTracker:
         self.xp_before = total_xp(db, user.id)
         self.level_before = level_info(self.xp_before)["level"]
         self.goal_reached_before = daily_goal_info(db, user)["reached"]
+        self.checked_in_before = streak_info(db, user.id)["active_today"]
 
     def finish(self) -> dict:
         freeze = settle_freezes(self.db, self.user)
@@ -426,11 +429,14 @@ class RewardTracker:
         xp_after = total_xp(self.db, self.user.id)
         level = level_info(xp_after)
         goal = daily_goal_info(self.db, self.user)
+        streak = streak_info(self.db, self.user.id)
         return {
             "xp_gained": xp_after - self.xp_before,
             "level": level,
             "level_up": level["level"] > self.level_before,
-            "streak": streak_info(self.db, self.user.id),
+            "streak": streak,
+            # 这次动作让今天第一次达成打卡条件（前端播放打卡动画，一天只一次）
+            "checked_in_now": streak["active_today"] and not self.checked_in_before,
             "daily_goal": goal,
             "goal_just_reached": goal["reached"] and not self.goal_reached_before,
             "new_achievements": new_achievements,

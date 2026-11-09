@@ -149,12 +149,17 @@ def is_deepseek(config: ModelConfig) -> bool:
     return "deepseek" in (config.model or "").lower()
 
 
+def is_ark(config: ModelConfig) -> bool:
+    """火山方舟（豆包）：同样支持 thinking={"type":"disabled"} 关闭深度思考。"""
+    return "volces.com" in (config.base_url or "") or (config.model or "").lower().startswith("doubao")
+
+
 def thinking_body(config: ModelConfig, thinking: Optional[bool]) -> dict:
     """
     思考控制参数。thinking=None 不传（沿用服务端默认）；False 显式关闭；True 按 config.thinking 开启。
     只对 DeepSeek 传——其他兼容服务不认识这些字段，可能直接 400。
     """
-    if thinking is None or not is_deepseek(config):
+    if thinking is None or not (is_deepseek(config) or is_ark(config)):
         return {}
     if not thinking:
         return {"thinking": {"type": "disabled"}}

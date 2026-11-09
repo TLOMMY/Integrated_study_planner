@@ -5,7 +5,7 @@ v4 新增的表：问题反馈、邮箱验证码、AI 对话、考试、课表�
 所有 JSON 字段用 Text 存（SQLite），读写时 json.loads / json.dumps。
 """
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 
 from app.core.database import Base
 from app.core.timeutil import now
@@ -82,6 +82,33 @@ class ChatMessage(Base):
     created_at = Column(DateTime, default=now, index=True)
 
 
+class ChatAttachment(Base):
+    """
+    AI 对话的附件：先上传（还没发送时 message_id 为空），发送时绑到那条用户消息。
+    图片存缩小后的 JPEG，文件存提取出的文字；扫描版 PDF 额外留原文件，发送时渲染成图片识别。
+    """
+
+    __tablename__ = "chat_attachments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    conversation_id = Column(Integer, ForeignKey("chat_conversations.id", ondelete="CASCADE"), nullable=True, index=True)
+    message_id = Column(Integer, ForeignKey("chat_messages.id", ondelete="CASCADE"), nullable=True, index=True)
+    # image / file
+    kind = Column(String(10), nullable=False)
+    name = Column(String(200), nullable=False)
+    mime = Column(String(100), nullable=True)
+    size = Column(Integer, default=0)
+    # 文件的页数 / 张数 / 段数（图片为空）
+    pages = Column(Integer, nullable=True)
+    data = Column(LargeBinary, nullable=True)
+    text = Column(Text, nullable=True)
+    truncated = Column(Boolean, default=False)
+    # 图片 / 扫描件交给视觉模型读出的内容（第一次发送时生成，之后的轮次直接用）
+    vision_text = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=now, index=True)
+
+
 class Exam(Base):
     """考试倒计时。"""
 
@@ -93,6 +120,8 @@ class Exam(Base):
     subject = Column(String(80), nullable=True)
     exam_date = Column(String(10), nullable=False, index=True)
     start_time = Column(String(5), nullable=True)
+    # 结束时间（可空；旧数据为空，启动迁移自动补列）
+    end_time = Column(String(5), nullable=True)
     location = Column(String(100), nullable=True)
     note = Column(Text, nullable=True)
     created_at = Column(DateTime, default=now)

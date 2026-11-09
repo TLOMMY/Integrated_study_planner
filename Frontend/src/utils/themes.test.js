@@ -15,17 +15,52 @@ test('每个主题的变量都能解析出完整的颜色表', () => {
   }
 })
 
-test('默认主题与 v3 配色一致', () => {
+test('默认主题：莫兰迪 × 珊瑚色板原样使用，走玻璃材质，不用纯白', () => {
   const css = themeCss(getTheme('default'))
   const vars = resolveVars(getTheme('default'))
-  assert.equal(vars.primary, '#4F6EF7')
-  assert.equal(vars.ink, '#0F172A')
-  assert.equal(vars.background, '#F5F7FB')
-  assert.equal(vars['on-primary'], '#FFFFFF')
-  assert.equal(vars['surface-alpha'], '1')
-  assert.match(css, /--c-primary: 79 110 247;/)
+  const expect = { primary: '#D85A30', 'primary-dark': '#B54A28', 'primary-light': '#FAECE7', 'primary-soft': '#F5C4B3', ink: '#2C2C2A', 'ink-soft': '#6B675E',
+    background: '#F4F1EA', surface: '#FBF9F4', 'ink-line': '#E5E0D4', bead: '#CFC9BA', idle: '#DCE8F0', 'idle-bead': '#9CC3E8', course: '#DCD9C8',
+    flame: '#F2743F', gold: '#D9A441', success: '#6F9B4F', danger: '#C4554D', 'subj-sci': '#D5E2EA', 'subj-sci-ink': '#5B84A8' }
+  for (const [k, v] of Object.entries(expect)) assert.equal(vars[k], v, `default.${k}`)
+  assert.ok(getTheme('default').glass, '默认主题保留 Liquid Glass 质感')
+  assert.match(css, /--wallpaper:/)
+  assert.match(css, /--c-primary: 216 90 48;/)
   assert.match(css, /color-scheme:light/)
-  assert.doesNotMatch(css, /--wallpaper/, '默认主题不应启用壁纸')
+  const white = Object.entries(vars).filter(([, v]) => String(v).toUpperCase() === '#FFFFFF').map(([k]) => k)
+  assert.deepEqual(white, [], `默认主题不应出现纯白：${white.join(', ')}`)
+})
+
+test('默认 / 深色（珊瑚玻璃）：正文与语义文字对比度达标', () => {
+  for (const id of ['default', 'dark']) {
+    const r = contrastReport(id)
+    for (const key of ['inkOnContent', 'inkSoft', 'inkMute', 'primaryText', 'successText', 'toast']) {
+      assert.ok(r[key] >= 4.5, `${id}.${key} = ${r[key].toFixed(2)}`)
+    }
+    assert.ok(r.inkOnWall >= 7, `${id} 正文在壁纸上 ${r.inkOnWall.toFixed(2)}`)
+  }
+  // 默认主题按钮上的字是指定的卡片色配珊瑚（约 3.7:1），只用于 14px 以上的粗体按钮文字
+  assert.ok(contrastReport('default').onPrimary >= 3.5)
+  assert.ok(contrastReport('dark').onPrimary >= 4.5)
+  assert.match(themeCss(getTheme('dark')), /color-scheme:dark/)
+})
+
+test('默认 / 深色的壁纸几乎是平的：只给玻璃一点层次，不算大面积渐变', () => {
+  for (const id of ['coral', 'warm-dark']) {
+    const stats = wallpaperStats(id)
+    assert.ok(stats.wallLightnessSpan <= 12, `${id} 壁纸明度跨度 ${stats.wallLightnessSpan}`)
+    assert.ok(stats.inkLightnessSpan >= 40, `${id} 文字与壁纸明度跨度`)
+  }
+  // 深色的 HSV 饱和度对很暗的颜色没有意义，只检查浅色
+  assert.ok(wallpaperStats('coral').maxSaturation <= 15, `coral 壁纸饱和度 ${wallpaperStats('coral').maxSaturation}%`)
+})
+
+test('每套主题都有时间轴与课表页的新变量', () => {
+  for (const theme of THEMES) {
+    const vars = resolveVars(theme)
+    for (const key of ['bead', 'idle', 'idle-bead', 'idle-ink', 'course', 'course-line', 'gold', 'flame-deep', 'subj-sci', 'subj-def-ink']) {
+      assert.ok(hexToChannels(vars[key]), `${theme.id}.${key}`)
+    }
+  }
 })
 
 test('配色文档给定的数值原样使用', () => {
@@ -69,7 +104,7 @@ test('玻璃主题：色块上的文字与正文在内容层上全部 ≥ 4.5:1'
   }
 })
 
-test('深色主题对比度达标，主色上不用白字', () => {
+test('深色主题对比度达标，主色上不用浅色字', () => {
   const r = contrastReport('dark')
   assert.ok(r.inkOnContent >= 12)
   assert.ok(r.inkSoft >= 7)

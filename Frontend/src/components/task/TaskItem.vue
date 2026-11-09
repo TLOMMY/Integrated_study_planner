@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { priorityMeta } from '@/utils/task'
+import TaskCheck from '@/components/motion/TaskCheck.vue'
 import { relativeDay } from '@/utils/dates'
 import { useTasksStore } from '@/stores/tasks'
 import { isBilibili, linkHost, remindLabel, taskLinks } from './extras'
@@ -55,13 +56,12 @@ const showRemind = computed(() => props.task.remind_at && !props.task.completed)
       </button>
       <button
         v-else
-        class="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 transition"
-        :class="task.completed ? 'border-success bg-success text-on-success' : [priority.ring, 'hover:bg-background']"
+        class="mt-0.5 shrink-0 rounded-full transition hover:bg-background"
         type="button"
         :aria-label="task.completed ? '标记为未完成' : '完成任务'"
         @click="emit('toggle', task)"
       >
-        <Icon v-if="task.completed" icon="lucide:check" width="14" class="animate-check" />
+        <TaskCheck :done="task.completed" :ring-class="priority.ring" />
       </button>
 
       <div class="min-w-0 flex-1">
@@ -121,7 +121,9 @@ const showRemind = computed(() => props.task.remind_at && !props.task.completed)
       </div>
 
       <div class="flex shrink-0 items-center gap-1">
-        <Icon v-if="task.priority && !task.completed" icon="lucide:flag" width="14" :class="priority.color" />
+        <span v-if="task.priority && !task.completed" class="inline-flex items-center gap-0.5 text-[10px] font-black" :class="priority.color" :title="`${priority.label}优先级`" :aria-label="`${priority.label}优先级`">
+          <Icon icon="lucide:flag" width="13" />{{ priority.label }}
+        </span>
         <button
           v-if="!task.completed && !selectable"
           class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-primary transition hover:bg-primary hover:text-on-primary"

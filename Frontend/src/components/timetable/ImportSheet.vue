@@ -7,6 +7,7 @@ import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
 import AiBadge from '@/components/ai/AiBadge.vue'
 import { friendlyLabel, modelLabel } from '@/utils/aiModels'
+import { useJwxtBrowser } from '@/composables/useJwxtBrowser'
 
 // target：'new' 时预览后默认"新建一套课表"（从课表管理的"导入为新课表"进入）
 const props = defineProps({ open: { type: Boolean, default: false }, target: { type: String, default: 'current' } })
@@ -14,6 +15,7 @@ const emit = defineEmits(['close'])
 
 const timetable = useTimetableStore()
 const ui = useUiStore()
+const jwxtBrowser = useJwxtBrowser()
 const WEEK = ['', '一', '二', '三', '四', '五', '六', '日']
 const SOURCES = [
   { key: 'web', label: '教务网页', icon: 'lucide:globe' },
@@ -33,7 +35,6 @@ const selected = ref(new Set())
 const busy = ref(false)
 
 const jwxtUrl = ref(localStorage.getItem(URL_KEY) || '')
-const pasted = ref('')
 const aiSettings = ref(null)
 const providerId = ref('')
 
@@ -48,14 +49,13 @@ watch(
     if (!open) return
     preview.value = null
     origin.value = null
-    pasted.value = ''
     aiError.value = null
     if (tab.value === 'ai') loadProviders()
   },
 )
 
 const subtitle = computed(() => {
-  if (preview.value) return preview.value.file_name || '粘贴的内容'
+  if (preview.value) return preview.value.file_name || '导入的课表'
   if (tab.value === 'web') return '把教务系统的课表页面交给我，自动识别课程'
   if (tab.value === 'ai') return '截图、照片或 PDF，由大模型识别课程'
   return '支持教务系统导出的 Excel（.xls / .xlsx）与 CSV'
@@ -99,14 +99,6 @@ const pickExcel = (event) => {
 const pickWeb = (event) => {
   const file = takeFile(event)
   if (file) runPreview(() => timetableApi.importWeb(file, 'preview'), 'web', file)
-}
-
-const parsePasted = () => {
-  const text = pasted.value.trim()
-  if (!text) return ui.toast('请先粘贴课表页面的源代码', 'warning')
-  const json = text.startsWith('{') || text.startsWith('[')
-  const file = new File([text], json ? 'pasted.json' : 'pasted.html', { type: json ? 'application/json' : 'text/html' })
-  runPreview(() => timetableApi.importWeb(file, 'preview'), 'web', file)
 }
 
 // ---------------------------------------------------------------- AI 识别：阶段提示与失败原因
@@ -186,7 +178,7 @@ const pickAi = async (event) => {
   }
 }
 
-// ---------------------------------------------------------------- 教务系统地址与书签小工具
+// ---------------------------------------------------------------- 教务系统地址
 const normalizedUrl = computed(() => {
   const raw = jwxtUrl.value.trim()
   if (!raw) return ''
@@ -205,30 +197,27 @@ const saveUrl = () => {
   localStorage.setItem(URL_KEY, normalizedUrl.value)
 }
 
-const openJwxt = () => {
+const openJwxt = async () => {
   if (!normalizedUrl.value) return ui.toast('请先填写学校教务系统网址', 'warning')
   saveUrl()
+  // 安卓 App：在内置浏览器里打开，同学点页面上的"导入此页课表"后直接解析，不用再保存文件
+  if (jwxtBrowser.supported) {
+    try {
+      const capture = await jwxtBrowser.open(normalizedUrl.value, { accent: themeAccent() })
+      if (capture) runPreview(() => timetableApi.importWeb(capture.file, 'preview'), 'web', capture.file)
+    } catch (error) {
+      ui.fail(error, '打开教务系统失败')
+    }
+    return
+  }
   window.open(normalizedUrl.value, '_blank', 'noopener')
 }
 
-// 在教务系统的课表页运行：收集顶层页面与同源 iframe/frame 的 HTML，用标记（与后端 FRAME_MARKER 一致）拼接后复制；
-// 复制失败则下载成文件。只用 ES5 语法、不含 // 注释（会被压成一行），兼容老旧教务系统常见的旧浏览器内核。
-const BOOKMARKLET_SOURCE = `(function(){
-var M='<'+'!--STUDY-PLANNER-FRAME-->',out=[],docs=[];
-function walk(w,d){if(d>4)return;try{var doc=w.document;out.push(doc.documentElement.outerHTML);docs.push(doc);}catch(e){return;}
-for(var i=0;i<w.frames.length;i++){walk(w.frames[i],d+1);}}
-walk(window,0);var text=out.join(M);
-function body(){for(var i=0;i<docs.length;i++){var b=docs[i].body;if(b&&b.tagName==='BODY')return docs[i];}return null;}
-function copy(){var doc=body();if(!doc)return false;var t=doc.createElement('textarea');t.value=text;
-t.style.position='fixed';t.style.top='0';t.style.opacity='0';doc.body.appendChild(t);t.focus();t.select();
-var ok=false;try{ok=doc.execCommand('copy');}catch(e){}doc.body.removeChild(t);return ok;}
-function save(){var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/html'}));
-a.download='timetable.html';(document.body||document.documentElement).appendChild(a);a.click();}
-if(copy()){alert('已复制课表页面（'+text.length+' 字符），回到学习规划粘贴即可');}
-else{save();alert('无法写入剪贴板，已下载 timetable.html，请在学习规划里上传该文件');}
-})()`
-const bookmarklet = `javascript:${encodeURIComponent(BOOKMARKLET_SOURCE.replace(/\n/g, ''))}`
-const bookmarkletHint = () => ui.toast('请把按钮拖到浏览器书签栏，在教务系统的课表页点击它', 'info', 3200)
+/** 当前主题的主色（#RRGGBB），给注入页面的按钮用。 */
+const themeAccent = () => {
+  const channels = getComputedStyle(document.documentElement).getPropertyValue('--c-primary').trim().split(/\s+/).map(Number)
+  return channels.length === 3 && channels.every(Number.isFinite) ? `#${channels.map((c) => c.toString(16).padStart(2, '0')).join('')}` : undefined
+}
 
 // ---------------------------------------------------------------- AI 模型选择
 const loadProviders = async () => {
@@ -258,6 +247,21 @@ const recognizeModel = computed(() => {
   return p ? `${p.name} · ${modelLabel(p.model)}` : ''
 })
 const textOnlyModel = computed(() => /deepseek/i.test(recognizeModel.value))
+
+// ---------------------------------------------------------------- 识别出的节次时间
+const usePeriodTimes = ref(true)
+watch(preview, () => (usePeriodTimes.value = true))
+/** 列出前几处不同："第1节 08:00→08:10"。 */
+const periodDiff = computed(() => {
+  const next = preview.value?.period_times || []
+  const now = timetable.meta?.period_times || []
+  const changes = next
+    .map((p, i) => ({ i, p, o: now[i] }))
+    .filter(({ p, o }) => !o || o.start !== p.start || o.end !== p.end)
+    .map(({ i, p, o }) => `第${i + 1}节 ${o ? `${o.start}-${o.end} → ` : ''}${p.start}-${p.end}`)
+  const extra = next.length !== now.length ? `共 ${now.length} 节 → ${next.length} 节；` : ''
+  return extra + changes.slice(0, 3).join('，') + (changes.length > 3 ? ` 等 ${changes.length} 处` : '')
+})
 
 // ---------------------------------------------------------------- 勾选与导入
 const groupState = (group) => {
@@ -307,6 +311,7 @@ const submit = () => {
     fail_count: p.skipped.length,
     target: target.target,
     set_name: target.setName,
+    period_times: usePeriodTimes.value && p.period_times?.length ? p.period_times : null,
   })
 }
 
@@ -377,33 +382,23 @@ const back = () => {
           </div>
         </div>
 
-        <ol class="space-y-1.5 rounded-3xl bg-background p-4 text-xs leading-5 text-ink-soft">
+        <!-- 安卓 App：内置浏览器里直接导入 -->
+        <ol v-if="jwxtBrowser.supported" class="space-y-1.5 rounded-3xl bg-background p-4 text-xs leading-5 text-ink-soft">
+          <li><b class="text-ink">1.</b> 点"打开"，在 App 里登录教务系统</li>
+          <li><b class="text-ink">2.</b> 进入"我的课表 / 学生课表 / 个人课表"，选好学年学期并点"查询"</li>
+          <li><b class="text-ink">3.</b> 点页面右下角的<b class="text-ink">"导入此页课表"</b>，回到这里核对后导入</li>
+        </ol>
+        <ol v-else class="space-y-1.5 rounded-3xl bg-background p-4 text-xs leading-5 text-ink-soft">
           <li><b class="text-ink">1.</b> 在新打开的页面登录教务系统</li>
           <li><b class="text-ink">2.</b> 进入"我的课表 / 学生课表 / 个人课表"，选好学年学期并点"查询"</li>
-          <li><b class="text-ink">3.</b> 按 <kbd class="rounded bg-surface px-1">Ctrl+S</kbd> 保存为"网页，单个文件（.mhtml）"后上传；或按 <kbd class="rounded bg-surface px-1">Ctrl+U</kbd> 查看源代码，全选复制后粘贴到下面</li>
+          <li><b class="text-ink">3.</b> 电脑：按 <kbd class="rounded bg-surface px-1">Ctrl+S</kbd> 保存为"网页，单个文件（.mhtml）"，再点下面上传</li>
+          <li class="pl-4">手机：在浏览器菜单里选"分享 → 打印 → 存储为 PDF"，再到 <button type="button" class="font-bold text-primary underline underline-offset-2" @click="tab = 'ai'">图片/PDF</button> 上传</li>
         </ol>
 
         <button class="flex w-full items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-primary/30 bg-primary-light/50 px-4 py-5 text-primary transition hover:bg-primary-light" type="button" :disabled="busy" @click="webInput.click()">
           <Icon :icon="busy ? 'lucide:loader-circle' : 'lucide:file-code'" width="22" :class="busy && 'animate-spin'" />
           <span class="text-sm font-black">{{ busy ? '正在解析…' : '上传保存的网页（.html / .mhtml）' }}</span>
         </button>
-
-        <div>
-          <label class="label" for="jwxt-paste">或粘贴页面源代码 / 正方接口 JSON</label>
-          <textarea id="jwxt-paste" v-model="pasted" class="field h-28 resize-none font-mono text-xs" placeholder="<html>… 或 {&quot;kbList&quot;: […]}" spellcheck="false" />
-          <button class="btn-primary mt-2 w-full" type="button" :disabled="busy || !pasted.trim()" @click="parsePasted">
-            <Icon :icon="busy ? 'lucide:loader-circle' : 'lucide:clipboard-paste'" width="16" :class="busy && 'animate-spin'" />
-            {{ busy ? '正在解析…' : `解析粘贴的内容${pasted ? `（${pasted.length} 字符）` : ''}` }}
-          </button>
-        </div>
-
-        <details class="rounded-3xl bg-background p-4 text-xs leading-5 text-ink-soft">
-          <summary class="cursor-pointer font-bold text-ink">电脑端更省事：书签小工具</summary>
-          <p class="mt-2">把下面的按钮拖到浏览器书签栏，在教务系统的课表页点一下，即可复制课表数据（含内嵌框架），回来粘贴即可。</p>
-          <a :href="bookmarklet" class="chip chip-active mt-2" draggable="true" @click.prevent="bookmarkletHint">
-            <Icon icon="lucide:bookmark" width="14" />复制课表到学习规划
-          </a>
-        </details>
 
         <p class="px-1 text-[11px] leading-5 text-ink-mute">支持正方（新版/旧版）、强智、青果等教务系统的课表页面。只在本地解析页面内容，不会登录或访问你的教务账号。</p>
       </template>
@@ -489,6 +484,15 @@ const back = () => {
           <p class="text-[10px] font-bold text-ink-soft">开学日期</p>
         </div>
       </div>
+
+      <!-- 课表上印了每节课的时间、且和设置里不一样：默认一并更新，课程时间按新的节次表计算 -->
+      <label v-if="preview.period_times?.length" class="flex cursor-pointer items-start gap-2 rounded-2xl border border-primary/25 bg-primary-light/60 p-3 text-xs leading-5 text-ink-soft">
+        <input v-model="usePeriodTimes" type="checkbox" class="mt-0.5 accent-primary" />
+        <span class="min-w-0">
+          <b class="text-ink">同时更新节次时间</b>（课表上印的和你现在的设置不一样）
+          <span class="num mt-1 block text-[11px] text-ink-mute">{{ periodDiff }}</span>
+        </span>
+      </label>
 
       <p class="text-xs text-ink-soft">班级课表会列出所有选修方向，<b>取消勾选你没选的课</b>即可。已选 {{ selected.size }} 门。</p>
 

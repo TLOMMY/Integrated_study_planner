@@ -87,7 +87,7 @@ const FEATURES = [
 
 const done = () => {
   ui.success(`欢迎，${auth.displayName}`)
-  const target = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/today-task'
+  const target = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/view'
   router.replace(target)
 }
 
@@ -131,7 +131,7 @@ const demo = async () => {
 </script>
 
 <template>
-  <div class="scrollbar-hide flex h-full flex-col overflow-y-auto bg-gradient-to-b from-primary via-hero to-xp lg:flex-row lg:items-center lg:justify-center lg:gap-20 lg:bg-gradient-to-br lg:px-16">
+  <div class="scrollbar-hide flex h-full flex-col overflow-y-auto bg-primary lg:flex-row lg:items-center lg:justify-center lg:gap-20 lg:px-16">
     <div class="shrink-0 px-6 pb-8 pt-[calc(var(--safe-top)+40px)] text-on-primary lg:max-w-md lg:p-0">
       <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-on-primary/20 text-3xl backdrop-blur">🦉</div>
       <h1 class="mt-4 text-3xl font-black lg:text-5xl">学业管家</h1>

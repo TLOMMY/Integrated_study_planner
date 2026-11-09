@@ -5,7 +5,7 @@
  * - 静态资源（/assets/ 下带 hash 的 js/css）：缓存优先，文件名变了自然换新
  * - 接口请求（/api/）与跨域请求：一律不缓存，始终走网络；断网时的接口数据由前端 request.js 的本地缓存提供
  */
-const CACHE = 'study-planner-v2'
+const CACHE = 'study-planner-v3'
 const SHELL = ['/', '/manifest.webmanifest', '/app-icon.svg', '/icons/icon-192.png']
 
 /** 从 HTML / js 文本里找出 /assets/ 下的文件。 */
@@ -79,4 +79,15 @@ self.addEventListener('fetch', (event) => {
       ),
     )
   }
+})
+
+// 点系统通知：回到已打开的页面，没有就打开首页
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      const client = list.find((c) => 'focus' in c)
+      return client ? client.focus() : self.clients.openWindow('/')
+    }),
+  )
 })

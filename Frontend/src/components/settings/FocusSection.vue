@@ -3,7 +3,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import MusicLibrary from './MusicLibrary.vue'
-import { NOISES, guardEnabled, setGuardEnabled } from '@/utils/noise'
+import { NOISES, guardEnabled, setGuardEnabled, setStrictEnabled, strictEnabled } from '@/utils/noise'
 import { playlistKey } from '@/utils/music'
 import { library, playlistForKey, reloadLibrary } from '@/composables/useMusicLibrary'
 import { useFocusStore } from '@/stores/focus'
@@ -12,6 +12,7 @@ import { useUiStore } from '@/stores/ui'
 const focus = useFocusStore()
 const ui = useUiStore()
 const guard = ref(guardEnabled())
+const strict = ref(strictEnabled())
 const previewing = ref(false)
 let previewTimer = null
 
@@ -25,6 +26,12 @@ const toggleGuard = () => {
   guard.value = !guard.value
   setGuardEnabled(guard.value)
   ui.success(guard.value ? '已开启防切出提醒' : '已关闭防切出提醒')
+  strict.value = strictEnabled()
+}
+const toggleStrict = () => {
+  setStrictEnabled(!strict.value)
+  strict.value = strictEnabled()
+  ui.success(strict.value ? '已开启严格模式' : '已关闭严格模式')
 }
 
 const pick = (key) => {
@@ -103,10 +110,21 @@ onBeforeUnmount(() => {
       <Icon icon="lucide:eye-off" width="20" class="text-flame" />
       <span class="flex-1">
         <span class="block text-sm font-semibold text-ink">防切出提醒</span>
-        <span class="block text-[11px] text-ink-mute">专注中切到其他页面或应用超过 3 秒，回来时温和提示并记录次数</span>
+        <span class="block text-[11px] text-ink-mute">专注中切到其他页面或应用超过 3 秒，回来时温和提示并记录次数；整轮没切出的完整番茄额外 +3 XP</span>
       </span>
       <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="guard ? 'bg-primary' : 'bg-ink-line'">
         <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="guard ? 'left-[22px]' : 'left-0.5'" />
+      </span>
+    </button>
+    <!-- 严格模式：依赖防切出，关掉防切出时一起失效 -->
+    <button v-if="guard" class="flex w-full items-center gap-3 border-t border-ink-line/60 px-4 py-3.5 text-left" type="button" role="switch" :aria-checked="strict" @click="toggleStrict">
+      <Icon icon="lucide:shield-check" width="20" class="text-flame" />
+      <span class="flex-1">
+        <span class="block text-sm font-semibold text-ink">严格模式</span>
+        <span class="block text-[11px] text-ink-mute">切出超过 10 秒自动暂停，离开的时间不计入专注；已专注的时间不会扣</span>
+      </span>
+      <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="strict ? 'bg-primary' : 'bg-ink-line'">
+        <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="strict ? 'left-[22px]' : 'left-0.5'" />
       </span>
     </button>
   </div>

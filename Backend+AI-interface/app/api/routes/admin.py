@@ -354,6 +354,19 @@ def error_fingerprint(message: str, stack: str) -> str:
     return hashlib.sha256(f"{message.strip()[:300]}\n{_first_frame(stack, message.strip())}".encode("utf-8")).hexdigest()[:40]
 
 
+# 前端错误记录：这么多天没有再出现的自动删除，后台列表不会无限增长。最多每天清理一次（随上报顺带执行）
+CLIENT_ERROR_KEEP_DAYS = 90
+_last_prune = {"at": None}
+
+
+def _prune_client_errors(db, now) -> None:
+    last = _last_prune["at"]
+    if last is not None and now - last < timedelta(days=1):
+        return
+    _last_prune["at"] = now
+    db.query(ClientError).filter(ClientError.last_seen < now - timedelta(days=CLIENT_ERROR_KEEP_DAYS)).delete(synchronize_session=False)
+
+
 @router.post("/client-errors", summary="前端运行时错误上报（登录可选，按 message + 堆栈首行聚合计数）")
 def report_client_error(payload: ClientErrorIn, request: Request, db: DB, user: Optional[User] = Depends(get_optional_user)):
     if not ratelimit.hit("client-error", ratelimit.client_ip(request), 30, 60):
@@ -379,6 +392,7 @@ def report_client_error(payload: ClientErrorIn, request: Request, db: DB, user: 
     row.page = (payload.page or "")[:200] or row.page
     row.client = client or row.client
     row.app_version = (payload.version or "")[:20] or row.app_version
+    _prune_client_errors(db, now)
     db.commit()
     # 前端错误短时激增时告警（后台线程，带冷却）
     alerts.record_client_error(message[:200], row.page or "")

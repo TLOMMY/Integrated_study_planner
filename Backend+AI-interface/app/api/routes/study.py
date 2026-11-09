@@ -61,6 +61,7 @@ def record_focus(payload: FocusIn, user: CurrentUser, db: DB):
         started_at=started,
         ended_at=ended,
         source="timer",
+        distractions=payload.distractions,
     )
     db.add(record)
     db.flush()
@@ -71,6 +72,9 @@ def record_focus(payload: FocusIn, user: CurrentUser, db: DB):
     if full and planned >= 20:
         room = max(0, gamification.FOCUS_XP_DAILY_CAP - gamification.focus_xp_today(db, user.id, day))
         gamification.award(db, user.id, min(room, gamification.XP_POMODORO_BONUS), "pomodoro", str(record.id), on=day)
+        if payload.distractions == 0:
+            room = max(0, gamification.FOCUS_XP_DAILY_CAP - gamification.focus_xp_today(db, user.id, day))
+            gamification.award(db, user.id, min(room, gamification.XP_NO_DISTRACTION), "no_distraction", str(record.id), on=day)
     if task:
         task.focus_minutes = int(task.focus_minutes or 0) + payload.duration_minutes
         if full and planned >= 20:
@@ -87,6 +91,7 @@ def record_focus(payload: FocusIn, user: CurrentUser, db: DB):
                 "duration_minutes": record.duration_minutes,
                 "planned_minutes": record.planned_minutes,
                 "completed": record.completed,
+                "distractions": record.distractions,
                 "subject": record.subject,
                 "record_date": record.record_date,
             },

@@ -20,6 +20,7 @@ XP_REASONS = {
     "task": "完成任务",
     "focus": "专注时长",
     "pomodoro": "完整番茄",
+    "no_distraction": "专心没切出",
     "daily_goal": "每日目标",
     "achievement": "成就奖励",
     "plan_complete": "完成计划",

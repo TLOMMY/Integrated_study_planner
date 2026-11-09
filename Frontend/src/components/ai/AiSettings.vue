@@ -231,7 +231,7 @@ const remove = (provider) => ai.removeProvider(provider)?.catch?.((error) => ui.
         :class="p.active ? 'border-primary bg-primary-light/40' : 'border-ink-line/70'"
       >
         <button type="button" class="flex min-w-0 flex-1 items-center gap-3 text-left" @click="activate(String(p.id))">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-xp text-on-primary"><Icon icon="lucide:sparkles" width="20" /></span>
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary text-on-primary"><Icon icon="lucide:sparkles" width="20" /></span>
           <span class="min-w-0 flex-1">
             <span class="block truncate text-sm font-black text-ink">{{ p.name }}</span>
             <span class="block truncate text-[11px] text-ink-mute">{{ modelLabel(p.model) }} · {{ p.has_key ? p.key_masked : '无 Key' }}</span>

@@ -1,11 +1,13 @@
 <script setup>
 /** 设置页 · 提醒设置（任务提醒、默认提前时间、系统通知权限、测试提醒） */
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { isNativeApp } from '@/api/server'
 import { useUiStore } from '@/stores/ui'
 import {
+  exactAlarmPermission,
   notificationPermission,
+  openExactAlarmSetting,
   reminderSettings,
   requestNotificationPermission,
   setDefaultLead,
@@ -15,6 +17,7 @@ import {
 
 const ui = useUiStore()
 const permission = ref('prompt')
+const exact = ref('unsupported')
 const asking = ref(false)
 
 const LEADS = [
@@ -40,8 +43,23 @@ const permissionHint = computed(() => {
 
 const refresh = async () => {
   permission.value = await notificationPermission().catch(() => 'unsupported')
+  exact.value = await exactAlarmPermission().catch(() => 'unsupported')
 }
 onMounted(refresh)
+
+// 从系统设置返回 App 时重新检测
+const onVisible = () => document.visibilityState === 'visible' && refresh()
+onMounted(() => document.addEventListener('visibilitychange', onVisible))
+onBeforeUnmount(() => document.removeEventListener('visibilitychange', onVisible))
+
+const enableExact = async () => {
+  exact.value = await openExactAlarmSetting()
+  if (exact.value === 'granted') ui.success('已开启准时提醒')
+}
+
+const scopeHint = isNativeApp()
+  ? '安卓 App：任务提醒和课前 10 分钟提醒会排进系统通知（未来 7 天），关掉 App 也能收到。部分手机需要在系统设置里允许本应用后台运行或自启动。'
+  : '网页和电脑端：页面打开时到点提醒，关掉页面后收不到。想在手机上关掉页面也能收到，请安装安卓 App。'
 
 const toggle = () => {
   setTaskReminderEnabled(!reminderSettings.enabled)
@@ -76,7 +94,7 @@ const pickLead = (value) => {
           <span class="block text-[11px] text-ink-mute">在任务编辑里设置提醒时间，到点弹出提醒</span>
         </span>
         <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="reminderSettings.enabled ? 'bg-primary' : 'bg-ink-line'">
-          <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" :class="reminderSettings.enabled ? 'left-[22px]' : 'left-0.5'" />
+          <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="reminderSettings.enabled ? 'left-[22px]' : 'left-0.5'" />
         </span>
       </button>
 
@@ -115,6 +133,26 @@ const pickLead = (value) => {
           <Icon icon="lucide:refresh-cw" width="13" />重新检测
         </button>
       </div>
+
+      <!-- 安卓 12+：没有"闹钟和提醒"权限时系统会推迟提醒 -->
+      <div v-if="exact === 'denied'" class="flex items-center gap-3 px-4 py-3.5">
+        <Icon icon="lucide:alarm-clock" width="20" class="shrink-0 text-flame" />
+        <span class="min-w-0 flex-1">
+          <span class="flex items-center gap-2 text-sm font-semibold text-ink">
+            准时提醒
+            <span class="rounded-full bg-flame-light px-2 py-0.5 text-[10px] font-black text-flame">未开启</span>
+          </span>
+          <span class="block text-[11px] text-ink-mute">系统没有允许"闹钟和提醒"，提醒可能晚到十几分钟</span>
+        </span>
+        <button class="chip chip-active shrink-0" type="button" @click="enableExact">
+          <Icon icon="lucide:settings" width="13" />去开启
+        </button>
+      </div>
+
+      <!-- 各端在什么情况下能收到提醒 -->
+      <p class="px-4 py-3 text-[11px] leading-5 text-ink-mute">
+        <Icon icon="lucide:info" width="12" class="mr-0.5 inline align-[-2px]" />{{ scopeHint }}
+      </p>
 
       <button class="flex w-full items-center gap-3 px-4 py-3.5 text-left" type="button" @click="testReminder">
         <Icon icon="lucide:send" width="20" class="text-xp" />

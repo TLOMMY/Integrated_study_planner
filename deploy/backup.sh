@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 每天备份数据库，保留最近 30 天。由 install.sh 写入 /etc/cron.d/xueyeguanjia-backup。
+# 每天备份数据库，保留最近 30 天；配了 COS_* 时再上传一份到腾讯云 COS。由 install.sh 写入 /etc/cron.d/xueyeguanjia-backup。
 # 使用 sqlite3 的 .backup：服务运行中也能得到一致的副本（没有 sqlite3 命令时用 Python 的 sqlite3 模块，效果相同）。
 # 恢复见 deploy/restore.sh。路径可用环境变量覆盖（本地演练用）：DB、DEST、KEEP_DAYS、PYTHON。
 set -euo pipefail
@@ -27,3 +27,9 @@ sqlite_backup "$DB" "$DEST/study_planner-$STAMP.db"
 gzip -f "$DEST/study_planner-$STAMP.db"
 find "$DEST" -name 'study_planner-*.db.gz' -mtime +"$KEEP_DAYS" -delete
 echo "已备份到 $DEST/study_planner-$STAMP.db.gz"
+
+# 异地备份：backend.env 里配了 COS_* 就上传到腾讯云 COS。上传失败不删本地备份，退出码非 0 便于在日志里发现
+COS_UPLOAD=${COS_UPLOAD:-/usr/local/bin/xueyeguanjia-cos-upload}
+if [ -x "$COS_UPLOAD" ]; then
+  "$COS_UPLOAD" "$DEST/study_planner-$STAMP.db.gz"
+fi

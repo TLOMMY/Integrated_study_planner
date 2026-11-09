@@ -78,7 +78,7 @@ async function main() {
   const db = join(tmp, 'e2e.db').replace(/\\/g, '/')
   const api = start('后端', PYTHON, ['-m', 'uvicorn', 'main:app', '--port', String(API_PORT)], {
     cwd: join(ROOT, 'Backend+AI-interface'),
-    env: { ...process.env, DATABASE_URL: `sqlite:///${db}`, MAIL_BACKEND: 'memory', FEEDBACK_WEBHOOK: '', DEEPSEEK_API_KEY: '', SEED_DEMO: 'true' },
+    env: { ...process.env, DATABASE_URL: `sqlite:///${db}`, MAIL_BACKEND: 'memory', FEEDBACK_WEBHOOK: '', DEEPSEEK_API_KEY: '', ARK_API_KEY: '', SEED_DEMO: 'true' },
   })
   await waitFor(`http://127.0.0.1:${API_PORT}/health`, '后端', api)
 

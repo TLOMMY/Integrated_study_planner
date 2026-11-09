@@ -15,18 +15,21 @@ POST /ai/conversations/{id}/chat 返回 SSE（text/event-stream），事件：
 import json
 import logging
 import re
+from typing import List, Optional
 
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, File, Form, UploadFile
+from fastapi.responses import Response, StreamingResponse
+from sqlalchemy.orm import object_session
 
 from app.ai import agent
 from app.api.deps import DB, CurrentUser
 from app.core import timeutil
 from app.core.database import SessionLocal
 from app.core.errors import ApiError, ok
-from app.models import ChatConversation, ChatMessage, User
+from app.models import ChatAttachment, ChatConversation, ChatMessage, User
 from app.schemas import (AgentChatIn, ConversationImportIn, ConversationIn, ConversationUpdateIn, ProposalApplyIn,
                          ProposalUndoIn)
+from app.services import attachments as attachment_service
 from app.services import gamification
 from app.services.tasks import plan_to_dict
 
@@ -48,15 +51,25 @@ def _load(text):
         return None
 
 
-def message_to_dict(message: ChatMessage) -> dict:
+def message_to_dict(message: ChatMessage, files: Optional[List[ChatAttachment]] = None) -> dict:
+    if files is None:
+        session = object_session(message)
+        files = (attachment_service.for_messages(session, [message.id]).get(message.id, [])
+                 if message.role == "user" and session is not None else [])
     return {
         "id": message.id,
         "conversation_id": message.conversation_id,
         "role": message.role,
         "content": message.content or "",
         "meta": agent.public_meta(agent.load_meta(message)),
+        "attachments": [attachment_service.to_dict(f) for f in files],
         "created_at": message.created_at.isoformat() if message.created_at else None,
     }
+
+
+def _attachment_preview(db, message: ChatMessage) -> str:
+    files = attachment_service.for_messages(db, [message.id]).get(message.id, [])
+    return " ".join(f"[{'图片' if f.kind == 'image' else '文件'}] {f.name}" for f in files[:2])
 
 
 def conversation_to_dict(db, conversation: ChatConversation) -> dict:
@@ -64,6 +77,8 @@ def conversation_to_dict(db, conversation: ChatConversation) -> dict:
             .order_by(ChatMessage.id.desc()).first())
     count = db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).count()
     preview = re.sub(r"\s+", " ", (last.content or "") if last else "").strip()[:60]
+    if last is not None and not preview and last.role == "user":
+        preview = _attachment_preview(db, last)[:60]
     return {
         "id": conversation.id,
         "title": conversation.title or DEFAULT_TITLE,
@@ -141,6 +156,7 @@ def update_conversation(conversation_id: int, payload: ConversationUpdateIn, use
 @router.delete("/ai/conversations/{conversation_id}", summary="删除对话（已导入的任务和课程不受影响）")
 def delete_conversation(conversation_id: int, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
+    db.query(ChatAttachment).filter(ChatAttachment.conversation_id == conversation.id).delete(synchronize_session=False)
     db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).delete()
     db.delete(conversation)
     db.commit()
@@ -152,17 +168,54 @@ def list_messages(conversation_id: int, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
     rows = (db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id, ChatMessage.user_id == user.id)
             .order_by(ChatMessage.id.desc()).limit(200).all())
+    files = attachment_service.for_messages(db, [m.id for m in rows if m.role == "user"])
     return ok({"conversation": conversation_to_dict(db, conversation),
-               "items": [message_to_dict(m) for m in reversed(rows)]})
+               "items": [message_to_dict(m, files.get(m.id, [])) for m in reversed(rows)]})
+
+
+# ---------------------------------------------------------------- 附件
+@router.post("/ai/attachments", summary="上传对话附件（图片 / PDF / Word / PPT / 表格 / 文本，≤10MB）：发送消息时带上返回的 id")
+def upload_attachment(user: CurrentUser, db: DB, file: UploadFile = File(...),
+                      conversation_id: Optional[int] = Form(default=None)):
+    if conversation_id is not None:
+        _owned(db, user, conversation_id)
+    content = file.file.read(attachment_service.MAX_BYTES + 1)
+    item = attachment_service.upload(db, user, file.filename or "", content, conversation_id)
+    return ok(attachment_service.to_dict(item), "已添加附件")
+
+
+@router.get("/ai/attachments/{attachment_id}/content", summary="附件预览（图片，仅本人）")
+def attachment_content(attachment_id: int, user: CurrentUser, db: DB):
+    item = attachment_service.get_owned(db, user, attachment_id)
+    if item.kind != "image" or not item.data:
+        raise ApiError(404, "这个附件没有预览")
+    return Response(content=item.data, media_type="image/jpeg",
+                    headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"})
+
+
+@router.delete("/ai/attachments/{attachment_id}", summary="删掉还没发送的附件")
+def delete_attachment(attachment_id: int, user: CurrentUser, db: DB):
+    item = attachment_service.get_owned(db, user, attachment_id)
+    if item.message_id is not None:
+        raise ApiError(422, "已经发送的附件不能单独删除")
+    db.delete(item)
+    db.commit()
+    return ok({"id": attachment_id}, "已移除")
 
 
 # ---------------------------------------------------------------- 对话
-def _save_user_message(db, user: User, conversation: ChatConversation, text: str) -> ChatMessage:
+def _save_user_message(db, user: User, conversation: ChatConversation, text: str,
+                       attachment_ids: Optional[List[int]] = None) -> ChatMessage:
+    # 先校验附件：有失效的直接报错，不留下没有附件的消息
+    files = attachment_service.bind(db, user, attachment_ids or [])
     first = db.query(ChatMessage).filter(ChatMessage.conversation_id == conversation.id).count() == 0
     message = ChatMessage(conversation_id=conversation.id, user_id=user.id, role="user", content=text.strip())
     db.add(message)
+    db.flush()
+    for item in files:
+        item.message_id, item.conversation_id = message.id, conversation.id
     if first and (conversation.title or DEFAULT_TITLE) == DEFAULT_TITLE:
-        conversation.title = _auto_title(text)
+        conversation.title = _auto_title(text.strip() or (files[0].name if files else ""))
     conversation.updated_at = timeutil.now()
     db.commit()
     db.refresh(message)
@@ -214,7 +267,7 @@ def _new_state(conversation: ChatConversation) -> agent.TurnState:
 def chat_stream(conversation_id: int, payload: AgentChatIn, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
     _check_ai_quota(db, user)
-    user_message = _save_user_message(db, user, conversation, payload.message)
+    user_message = _save_user_message(db, user, conversation, payload.message, payload.attachments)
     user_id, user_payload = user.id, message_to_dict(user_message)
 
     def events():
@@ -260,7 +313,7 @@ def chat_stream(conversation_id: int, payload: AgentChatIn, user: CurrentUser, d
 def chat_sync(conversation_id: int, payload: AgentChatIn, user: CurrentUser, db: DB):
     conversation = _owned(db, user, conversation_id)
     _check_ai_quota(db, user)
-    user_message = _save_user_message(db, user, conversation, payload.message)
+    user_message = _save_user_message(db, user, conversation, payload.message, payload.attachments)
     state = _new_state(conversation)
     events = []
     try:

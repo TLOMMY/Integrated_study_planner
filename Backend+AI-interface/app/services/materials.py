@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-PDF 讲义提取章节：书签（outline）优先，没有书签时识别正文里的章节标题，都没有就按页数分段。
+讲义提取章节：PDF、PPT（.pptx）、Word（.docx）、文本（.txt / .md），读取见 services/documents.py。
+文件自带的结构优先（PDF 书签 / PPT 分节 / Word 标题样式 / Markdown 标题），没有时识别正文里的章节标题，
+都没有就按页（张、段）分段。
 
 每个章节给出页码范围与字数，按字数（课件页数多、字少时按页数）估算复习分钟。
 有可用模型时，让模型把章节整理成更合理的复习单元（合并太碎的小节、拆开太大的章节），
 模型输出逐条校验（页码在文件范围内、时长合理），校验不过或调用失败时退回规则结果。
 """
 
-import io
 import json
 import math
 import re
@@ -19,6 +20,7 @@ from app.ai import llm, providers
 from app.ai.llm import LlmError
 from app.core.errors import ApiError
 from app.models import User
+from app.services import documents
 
 MAX_PAGES = 800
 MAX_TOP = 60
@@ -39,33 +41,6 @@ HEADING_PATTERNS: List[Tuple[re.Pattern, int]] = [
     (re.compile(rf"^第\s*[0-9{_CN_NUM}]+\s*节\s*\S.{{0,40}}$"), 2),
     (re.compile(r"^\d{1,2}\.\d{1,2}\s+\S.{0,40}$"), 2),
 ]
-
-
-# ---------------------------------------------------------------- PDF 读取
-def _read_pdf(content: bytes):
-    from pypdf import PdfReader
-    from pypdf.errors import PdfReadError
-
-    if content[:5] != b"%PDF-":
-        raise ApiError(415, "仅支持 PDF 文件")
-    try:
-        reader = PdfReader(io.BytesIO(content))
-        if reader.is_encrypted and not reader.decrypt(""):
-            raise ApiError(422, "PDF 已加密，请先解除密码再上传")
-        pages = []
-        for page in reader.pages[:MAX_PAGES]:
-            try:
-                pages.append(page.extract_text() or "")
-            except Exception:  # noqa: BLE001 - 个别页面字体损坏时跳过该页文字
-                pages.append("")
-        total = len(reader.pages)
-    except ApiError:
-        raise
-    except (PdfReadError, ValueError, KeyError, TypeError, OSError):
-        raise ApiError(422, "PDF 文件已损坏或无法读取") from None
-    if total == 0:
-        raise ApiError(422, "PDF 里没有页面")
-    return reader, pages, total
 
 
 def _char_count(text: str) -> int:
@@ -239,16 +214,32 @@ def llm_outline(config, chapters: List[dict], pages: List[str], total: int, file
 
 
 # ---------------------------------------------------------------- 入口
+EMPTY_HINTS = {
+    "pdf": SCANNED_HINT,
+    "pptx": "这份 PPT 里几乎没有文字（可能都是图片），读不出章节",
+    "docx": "这份 Word 文件里几乎没有文字",
+    "text": "文件里几乎没有文字",
+}
+
+
+def heading_level(line: str) -> Optional[int]:
+    """单行是不是章节标题：返回 1（章）/ 2（节）/ None。纯文本和 PPT 用。"""
+    for pattern, level in HEADING_PATTERNS:
+        if pattern.match(line):
+            return level
+    return None
+
+
 def extract_outline(db: Session, user: User, file_name: str, content: bytes) -> dict:
-    if not file_name.lower().endswith(".pdf") and content[:5] != b"%PDF-":
-        raise ApiError(415, "仅支持 PDF 文件")
-    reader, pages, total = _read_pdf(content)
+    doc = documents.read(file_name, content, heading_level)
+    pages, total = doc.pages, doc.total
     page_chars = [_char_count(text) for text in pages] + [0] * (total - len(pages))
     if sum(page_chars) < max(50, min(total, len(pages)) * 10):
-        raise ApiError(422, SCANNED_HINT)
+        raise ApiError(422, EMPTY_HINTS[doc.kind])
 
+    # 文件自带的结构：PDF 书签 / PPT 分节 / Word 标题样式 / Markdown 标题
     source = "outline"
-    entries = _outline_entries(reader, total)
+    entries = _outline_entries(doc.reader, total) if doc.kind == "pdf" else doc.entries
     if not entries:
         source, entries = "headings", _heading_entries(pages)
     chapters = build_tree(entries, page_chars, total) if entries else []
@@ -266,6 +257,8 @@ def extract_outline(db: Session, user: User, file_name: str, content: bytes) -> 
 
     data = {
         "file_name": file_name,
+        "kind": doc.kind,
+        "unit": doc.unit,
         "pages": total,
         "words": sum(page_chars),
         "source": source,

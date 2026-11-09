@@ -110,6 +110,18 @@ def env_config(thinking: str = "high", model: Optional[str] = None) -> Optional[
                        timeout=max(settings.DEEPSEEK_TIMEOUT, 120), thinking=_thinking(thinking))
 
 
+VISION_ENV_NAME = "豆包（服务器配置）"
+
+
+def vision_env_config(user: Optional[User] = None) -> Optional[ModelConfig]:
+    """服务器的视觉模型（豆包）。没配置时返回 None。和服务器 DeepSeek 一样计入每日 AI 额度。"""
+    if not settings.ARK_API_KEY or not settings.ARK_MODEL:
+        return None
+    config = ModelConfig(base_url=settings.ARK_BASE_URL, api_key=settings.ARK_API_KEY, model=settings.ARK_MODEL,
+                         name=VISION_ENV_NAME, source="env", timeout=max(settings.AI_TIMEOUT, 120), thinking="off")
+    return ai_quota.attach(config, user) if user is not None else config
+
+
 def to_config(provider: AiProvider) -> ModelConfig:
     return ModelConfig(base_url=provider.base_url, api_key=crypto.decrypt(provider.api_key_enc),
                        model=provider.model, name=provider.name, source="user",

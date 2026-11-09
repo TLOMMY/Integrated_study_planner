@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import { useUiStore } from '@/stores/ui'
+import LevelBadge from '@/components/motion/LevelBadge.vue'
+import StreakFlame from '@/components/motion/StreakFlame.vue'
 
 const ui = useUiStore()
 const current = computed(() => ui.celebrations[0])
@@ -34,13 +36,17 @@ const headline = computed(() => {
       />
 
       <div :key="current.id" class="relative w-full material max-w-sm animate-pop rounded-[32px] bg-surface p-6 text-center shadow-2xl">
-        <div class="mx-auto -mt-14 mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-surface shadow-lift"
-             :class="current.level_up ? 'bg-xp text-on-xp' : current.goal_just_reached ? 'bg-flame text-on-flame' : 'bg-success text-on-success'">
-          <Icon :icon="current.level_up ? 'lucide:crown' : current.goal_just_reached ? 'lucide:flame' : 'lucide:award'" width="38" />
+        <!-- 升级：徽章；达成目标或今天第一次打卡：火苗；只解锁成就：成就图标 -->
+        <LevelBadge v-if="current.level_up" :key="`lv-${current.id}`" :level="current.level.level" :size="88" class="mx-auto -mt-16 mb-2" />
+        <div v-else-if="current.goal_just_reached || current.checked_in_now" class="mx-auto -mt-16 mb-2 w-fit rounded-full bg-surface p-1 shadow-lift">
+          <StreakFlame :key="`sf-${current.id}`" :days="current.streak?.current || 1" :size="88" :show-days="false" />
+        </div>
+        <div v-else class="mx-auto -mt-14 mb-3 flex h-20 w-20 items-center justify-center rounded-full border-4 border-surface bg-success text-on-success shadow-lift">
+          <Icon icon="lucide:award" width="38" />
         </div>
         <h2 class="text-2xl font-black text-ink">{{ headline }}</h2>
 
-        <p v-if="current.goal_just_reached" class="mt-2 text-sm text-ink-soft">
+        <p v-if="current.goal_just_reached || (current.checked_in_now && !current.level_up)" class="mt-2 text-sm text-ink-soft">
           今天已专注 <b class="num text-flame">{{ current.daily_goal.done_minutes }}</b> 分钟 ·
           连续 <b class="num text-flame">{{ current.streak.current }}</b> 天
         </p>

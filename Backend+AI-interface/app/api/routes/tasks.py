@@ -21,7 +21,9 @@ from app.services import tasks as task_service
 
 router = APIRouter(prefix="/task", tags=["任务"])
 
-View = Literal["today", "upcoming", "overdue", "completed", "range", "all"]
+View = Literal["today", "upcoming", "overdue", "completed", "range", "all", "inbox", "future"]
+# upcoming = 以后的 + 没有日期的（1.1 的"即将"，已安装的旧版 App 还在用，含义不变）；
+# 1.2 的任务页拆成两个标签：future 以后的（有日期）、inbox 收集箱（没有日期）
 
 
 @router.get("/list", summary="任务列表（今日 / 即将 / 逾期 / 已完成 / 日期区间）")
@@ -65,6 +67,10 @@ def list_tasks(
         query = query.filter(StudyTask.completed.is_(False)).filter(
             (StudyTask.due_date > key) | (StudyTask.due_date.is_(None))
         )
+    elif view == "future":
+        query = query.filter(StudyTask.completed.is_(False), StudyTask.due_date > key)
+    elif view == "inbox":
+        query = query.filter(StudyTask.completed.is_(False), StudyTask.due_date.is_(None))
     elif view == "completed":
         query = query.filter(StudyTask.completed.is_(True))
     elif view == "range":

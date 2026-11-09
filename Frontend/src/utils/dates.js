@@ -35,6 +35,14 @@ export const shortMinutes = (minutes) => {
   return value >= 60 ? `${(value / 60).toFixed(value % 60 ? 1 : 0)}h` : `${value}m`
 }
 
+/** 时间轴上的时长："45 分钟" / "1h" / "1h50m" */
+export const compactMinutes = (minutes) => {
+  const value = Math.max(0, Math.round(minutes || 0))
+  if (value < 60) return `${value} 分钟`
+  const rest = value % 60
+  return `${Math.floor(value / 60)}h${rest ? `${rest}m` : ''}`
+}
+
 export const mondayOf = (date) => {
   const d = dayjs(date)
   return d.subtract((d.day() + 6) % 7, 'day').startOf('day')

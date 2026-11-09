@@ -159,6 +159,7 @@ systemctl restart xueyeguanjia
 
 echo "==> 7/$STEPS 运维：每日备份、恢复脚本、健康检查（每分钟，失败时通过反馈通知渠道告警）"
 install -m 755 "$APP/deploy/backup.sh" /usr/local/bin/xueyeguanjia-backup
+install -m 755 "$APP/deploy/cos_upload.py" /usr/local/bin/xueyeguanjia-cos-upload
 install -m 755 "$APP/deploy/restore.sh" /usr/local/bin/xueyeguanjia-restore
 install -m 755 "$APP/deploy/healthcheck.sh" /usr/local/bin/xueyeguanjia-healthcheck
 # 自动部署（GitHub Actions）用：记录本次部署方式，xueyeguanjia-deploy 按同样方式重新部署

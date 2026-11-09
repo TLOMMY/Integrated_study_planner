@@ -4,6 +4,7 @@ import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import { coursesOnDate, mondayOf } from '@/utils/dates'
 import { useDesktop } from '@/composables/useDesktop'
+import { subjectInk, subjectOf } from '@/utils/subjects'
 
 const props = defineProps({
   selected: { type: String, required: true },
@@ -18,7 +19,7 @@ const isDesktop = useDesktop()
 /** 课程与任务合并成一条时间线，按开始时间排序；没有时刻的任务排在最后。 */
 const merge = (courses, tasks) =>
   [
-    ...courses.map((c) => ({ key: `c${c.id}`, type: 'course', time: c.start_time, title: c.course_name, color: c.color })),
+    ...courses.map((c) => ({ key: `c${c.id}`, type: 'course', time: c.start_time, title: c.course_name, color: subjectInk(subjectOf(c)) })),
     ...tasks.map((t) => ({ key: `t${t.id}`, type: 'task', time: t.start_time || '', title: t.title, done: t.completed, task: t })),
   ].sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99') || (a.type === 'course' ? -1 : 1))
 
@@ -103,17 +104,16 @@ const pick = (key) => !dragTask.value && emit('pick', key)
             :key="item.key"
             class="rounded-lg px-2 py-1 text-[11px] transition lg:shrink-0 lg:py-1.5"
             :class="[
-              item.type === 'course' ? 'font-bold text-white' : item.done ? 'bg-background font-semibold text-ink-mute line-through' : 'bg-background font-semibold text-ink-soft',
+              item.type === 'course' ? 'bg-course font-bold text-ink' : item.done ? 'bg-background font-semibold text-ink-mute line-through' : 'bg-background font-semibold text-ink-soft',
               canDrag(item) && 'cursor-grab hover:bg-primary-light hover:text-primary active:cursor-grabbing',
               dragTask && item.task === dragTask && 'opacity-40 ring-2 ring-primary',
             ]"
-            :style="item.type === 'course' ? { background: item.color } : undefined"
             :draggable="canDrag(item)"
             :title="canDrag(item) ? '拖到另一天改期' : undefined"
             @dragstart="onDragStart($event, item)"
             @dragend="onDragEnd"
           >
-            <span v-if="item.time" class="num mr-1" :class="item.type === 'course' ? '' : 'text-ink-mute'">{{ item.time }}</span>{{ item.title }}
+            <i v-if="item.type === 'course'" class="mr-1 inline-block h-1.5 w-1.5 rounded-full align-middle" :style="{ background: item.color }" /><span v-if="item.time" class="num mr-1 text-ink-mute">{{ item.time }}</span>{{ item.title }}
           </span>
         </div>
         <p v-else class="text-xs text-ink-mute">没有安排</p>

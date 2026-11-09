@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { studyApi } from '@/api'
 import { playChime } from '@/utils/chime'
 import { localIso } from '@/utils/dates'
-import { guardEnabled, noise, noisePrefs } from '@/utils/noise'
+import { guardEnabled, noise, noisePrefs, strictEnabled } from '@/utils/noise'
 import { useHomeStore } from './home'
 import { useTasksStore } from './tasks'
 import { useUiStore } from './ui'
@@ -19,8 +19,9 @@ export const syncNow = () => Date.now() + clockOffset
 
 const newSessionId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
-// 防切出：离开超过这个时长才算一次
+// 防切出：离开超过这个时长才算一次；严格模式下离开超过 STRICT_PAUSE 自动暂停
 const AWAY_THRESHOLD = 3000
+const STRICT_PAUSE = 10000
 let guardInstalled = false
 
 /**
@@ -52,8 +53,9 @@ export const useFocusStore = defineStore('focus', {
   getters: {
     plannedMs: (state) => state.plannedMinutes * 60000,
     elapsedMs(state) {
-      const running = state.status === 'running' && state.segmentStart ? state.now - state.segmentStart : 0
-      return Math.min(this.plannedMs, state.accumulatedMs + running)
+      // now 只在计时器运行时刷新；刚开始的那一帧 now 可能还早于 segmentStart，不能算出负数（否则剩余时间会先多出一截再跳回）
+      const running = state.status === 'running' && state.segmentStart ? Math.max(0, state.now - state.segmentStart) : 0
+      return Math.min(this.plannedMs, Math.max(0, state.accumulatedMs + running))
     },
     remainingMs() {
       return Math.max(0, this.plannedMs - this.elapsedMs)
@@ -79,6 +81,7 @@ export const useFocusStore = defineStore('focus', {
       this.startedAt = this.startedAt || localIso()
       this.sessionId = this.sessionId || newSessionId()
       this.segmentStart = Date.now()
+      this.now = this.segmentStart
       this.status = 'running'
       this.updatedAt = syncNow()
       this.persist()
@@ -88,10 +91,12 @@ export const useFocusStore = defineStore('focus', {
       if (this.noiseKind !== 'off') noise.play(this.noiseKind)
     },
 
-    pause() {
+    /** 暂停；at 是暂停生效的时刻（严格模式按离开的那一刻算），默认现在。 */
+    pause(at = Date.now()) {
       if (this.status !== 'running') return
-      this.accumulatedMs += Date.now() - this.segmentStart
+      this.accumulatedMs += Math.max(0, Math.min(at, Date.now()) - this.segmentStart)
       this.segmentStart = null
+      this.now = Date.now()
       this.status = 'paused'
       this.updatedAt = syncNow()
       this.persist()
@@ -125,7 +130,7 @@ export const useFocusStore = defineStore('focus', {
     async finish(natural = false) {
       if (!this.active) return null
       if (this.status === 'running') {
-        this.accumulatedMs += Date.now() - this.segmentStart
+        this.accumulatedMs += Math.max(0, Date.now() - this.segmentStart)
         this.segmentStart = null
       }
       const minutes = Math.min(this.plannedMinutes, Math.floor(this.accumulatedMs / 60000))
@@ -157,6 +162,8 @@ export const useFocusStore = defineStore('focus', {
           completed: minutes >= this.plannedMinutes,
           started_at: this.startedAt,
           session_id: this.sessionId,
+          // 只有开着防切出时才上报切出次数（0 次的完整番茄有额外 XP）
+          distractions: guardEnabled() ? this.distractions : null,
         })
         if (result.duplicate) {
           this.lastResult = { minutes, duplicate: true, distractions: this.distractions }
@@ -234,12 +241,14 @@ export const useFocusStore = defineStore('focus', {
     /** 采用其他设备上较新的专注状态（接管或同步暂停 / 继续）。 */
     applyRemote(remote) {
       const wasRunning = this.status === 'running'
+      // segment_start 是对方设备的本机时间；两台设备时钟有偏差时可能晚于本机的现在，夹到现在为止，避免计时倒着走
+      const remoteStart = remote.status === 'running' && remote.segment_start ? Math.min(Date.now(), remote.segment_start) : null
       this.$patch({
         status: remote.status,
         task: remote.task || null,
         plannedMinutes: remote.planned_minutes || 25,
-        accumulatedMs: remote.accumulated_ms || 0,
-        segmentStart: remote.status === 'running' ? remote.segment_start || Date.now() : null,
+        accumulatedMs: Math.max(0, remote.accumulated_ms || 0),
+        segmentStart: remote.status === 'running' ? remoteStart || Date.now() : null,
         startedAt: remote.started_at || localIso(),
         sessionId: remote.session_id,
         updatedAt: remote.updated_at,
@@ -283,28 +292,37 @@ export const useFocusStore = defineStore('focus', {
     },
 
     // ------------------------------------------------------------ 防切出提醒
+    // 网页靠 visibilitychange；安卓 App 里 Capacitor 还会在 document 上发 pause / resume（Activity 进入后台 / 回到前台）。
+    // 两路都监听：离开只记第一次的时间，回来只结算一次，所以同一次切出不会重复计数。
     installGuard() {
       if (guardInstalled || typeof document === 'undefined') return
       guardInstalled = true
-      document.addEventListener('visibilitychange', () => this.onVisibility())
+      document.addEventListener('visibilitychange', () => (document.hidden ? this.onLeave() : this.onReturn()))
+      document.addEventListener('pause', () => this.onLeave())
+      document.addEventListener('resume', () => this.onReturn())
     },
-    onVisibility() {
+    onLeave() {
       if (this.status !== 'running' || !guardEnabled()) {
         this.hiddenAt = null
         return
       }
-      if (document.hidden) {
-        this.hiddenAt = Date.now()
-        return
-      }
+      if (!this.hiddenAt) this.hiddenAt = Date.now()
+    },
+    onReturn() {
       if (!this.hiddenAt) return
       const away = Date.now() - this.hiddenAt
       this.hiddenAt = null
-      if (away < AWAY_THRESHOLD) return
+      if (this.status !== 'running' || !guardEnabled() || away < AWAY_THRESHOLD) return
       this.distractions += 1
-      this.persist()
       const seconds = Math.round(away / 1000)
       const span = seconds >= 60 ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒` : `${seconds} 秒`
+      if (strictEnabled() && away >= STRICT_PAUSE) {
+        // 严格模式：按离开的那一刻暂停，离开的时间不算专注；不扣已经专注的时间（走 pause，跨设备同步能收到）
+        this.pause(Date.now() - away)
+        useUiStore().toast(`严格模式：离开了 ${span}，已在离开时暂停，离开的时间不计入。准备好了点继续`, 'warning', 5000)
+        return
+      }
+      this.persist()
       useUiStore().toast(`欢迎回来，刚才离开了 ${span}。本轮第 ${this.distractions} 次切出，继续加油`, 'warning', 3600)
     },
   },

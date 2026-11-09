@@ -1,5 +1,8 @@
 <script setup>
-/** 设置页 · 我的反馈：处理状态、管理员回复（未读红点）。提交新反馈后监听 feedback:submitted 事件刷新。 */
+/**
+ * 设置页 · 我的反馈：处理状态、管理员回复（未读红点）。提交新反馈后监听 feedback:submitted 事件刷新。
+ * 已解决 / 已关闭、回复已读超过 7 天的反馈默认不显示（服务器判断），底部可以展开查看。
+ */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { feedbackApi } from '@/api'
@@ -8,20 +11,29 @@ import { statusMeta, timeAgo } from '@/components/admin/meta'
 
 const items = ref([])
 const unread = ref(0)
+const hidden = ref(0)
+const withSettled = ref(false)
 const loaded = ref(false)
 const expanded = ref(null)
 const showAll = ref(false)
 
 const load = async () => {
   try {
-    const data = await feedbackApi.mine()
+    const data = await feedbackApi.mine(withSettled.value)
     items.value = data.items
     unread.value = data.unread
+    hidden.value = data.hidden || 0
   } catch {
     /* 列表加载失败不打扰用户，下次进入设置页再试 */
   } finally {
     loaded.value = true
   }
+}
+
+const toggleSettled = () => {
+  withSettled.value = !withSettled.value
+  showAll.value = withSettled.value
+  load()
 }
 
 const toggle = async (item) => {
@@ -77,6 +89,13 @@ onBeforeUnmount(() => window.removeEventListener('feedback:submitted', load))
       <button v-if="items.length > 3" class="w-full py-2.5 text-xs font-bold text-primary" type="button" @click="showAll = !showAll">
         {{ showAll ? '收起' : `查看全部 ${items.length} 条` }}
       </button>
+      <button v-if="hidden || withSettled" class="flex w-full items-center justify-center gap-1 py-2.5 text-[11px] font-semibold text-ink-mute" type="button" @click="toggleSettled">
+        <Icon icon="lucide:archive" width="12" />{{ withSettled ? '隐藏已处理的反馈' : `还有 ${hidden} 条已处理的反馈` }}
+      </button>
     </div>
   </div>
+  <!-- 全部反馈都已处理并隐藏时，只留一个入口 -->
+  <button v-else-if="loaded && hidden" class="mt-5 flex w-full items-center justify-center gap-1 py-2 text-[11px] font-semibold text-ink-mute" type="button" @click="toggleSettled">
+    <Icon icon="lucide:archive" width="12" />{{ hidden }} 条已处理的反馈
+  </button>
 </template>

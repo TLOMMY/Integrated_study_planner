@@ -17,9 +17,9 @@ const GROUPS = [
   {
     title: '学习',
     items: [
-      { name: 'home', label: '今日待办', icon: 'lucide:circle-check-big', to: '/today-task' },
       { name: 'view', label: '日程', icon: 'lucide:calendar-clock', to: '/view' },
       { name: 'timetable', label: '课表', icon: 'lucide:calendar-days', to: '/timetable' },
+      { name: 'home', label: '任务', icon: 'lucide:circle-check-big', to: '/today-task' },
       { name: 'plans', label: '学习计划', icon: 'lucide:map', to: '/plans' },
     ],
   },
@@ -49,7 +49,7 @@ const startFocus = () => router.push({ name: 'focus' })
 
 <template>
   <aside class="glass-bar flex h-full w-60 shrink-0 flex-col border-r border-ink-line/70 bg-surface px-3 py-5" aria-label="主导航">
-    <RouterLink to="/today-task" class="flex items-center gap-2.5 px-3">
+    <RouterLink to="/view" class="flex items-center gap-2.5 px-3">
       <img src="/app-icon.svg" alt="" class="h-9 w-9 rounded-xl shadow-lift" />
       <div class="leading-tight">
         <p class="text-base font-black text-ink">学业管家</p>
@@ -74,7 +74,7 @@ const startFocus = () => router.push({ name: 'focus' })
           :aria-current="route.name === item.name ? 'page' : undefined"
           :data-tour="TOUR_NAV[item.name]"
         >
-          <Icon :icon="item.icon" width="18" :class="item.accent && route.name !== item.name && 'text-xp'" />
+          <Icon :icon="item.icon" width="18" :class="item.accent && route.name !== item.name && 'text-primary'" />
           <span class="flex-1">{{ item.label }}</span>
           <span v-if="item.name === 'statistics' && streak?.at_risk" class="h-2 w-2 rounded-full bg-flame" title="今天还没打卡" />
         </RouterLink>
@@ -87,12 +87,12 @@ const startFocus = () => router.push({ name: 'focus' })
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-black text-ink">{{ auth.displayName }}</p>
           <p class="text-[11px] font-semibold text-ink-mute">
-            Lv.{{ level?.level ?? 1 }}<span class="mx-1">·</span><span class="text-flame">🔥 {{ streak?.current ?? 0 }} 天</span>
+            Lv.{{ level?.level ?? 1 }}<span class="mx-1">·</span><span class="inline-flex items-center gap-0.5 text-flame"><Icon icon="lucide:flame" width="11" />{{ streak?.current ?? 0 }} 天</span>
           </p>
         </div>
       </div>
       <div class="mt-2.5 h-1.5 overflow-hidden rounded-full bg-ink-line">
-        <div class="h-full rounded-full bg-gradient-to-r from-primary to-xp transition-all duration-700" :style="{ width: `${level?.progress ?? 0}%` }" />
+        <div class="h-full rounded-full bg-gold transition-all duration-700" :style="{ width: `${level?.progress ?? 0}%` }" />
       </div>
     </RouterLink>
   </aside>

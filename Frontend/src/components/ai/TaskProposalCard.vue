@@ -9,7 +9,7 @@ import { Icon } from '@iconify/vue'
 import { useAiStore } from '@/stores/ai'
 import { useUiStore } from '@/stores/ui'
 import { formatMinutes, relativeDay, todayStr } from '@/utils/dates'
-import { commitDate, groupTasksByDate } from '@/utils/proposalGroups'
+import { clearDate, commitDate, groupTasksByDate } from '@/utils/proposalGroups'
 import AiBadge from './AiBadge.vue'
 
 const props = defineProps({
@@ -22,7 +22,7 @@ const busy = ref(false)
 const expanded = ref(false)
 
 // group：已提交的日期，只用于分组。编辑日期时只改 date，失焦 / 回车后才提交到 group（见 utils/proposalGroups）
-const copy = (items) => items.map((t) => ({ ...t, links: t.links || [], edited: false, group: t.date }))
+const copy = (items) => items.map((t) => ({ ...t, date: t.date || '', start_time: t.start_time || '', links: t.links || [], edited: false, group: t.date || '' }))
 const items = ref(copy(props.proposal.items || []))
 const picked = reactive(new Set(items.value.filter((t) => !props.proposal.results?.[t.key]?.ok).map((t) => t.key)))
 watch(() => props.proposal.id, () => {
@@ -51,12 +51,13 @@ const localIssues = computed(() => {
     const list = []
     const start = toMin(t.start_time)
     const minutes = Number(t.duration_minutes || 0)
-    if (!t.date) list.push('请选择日期')
-    else if (t.date < today) list.push('日期已经过去')
+    // 日期可以留空（导入后进收集箱），但定了开始时间就需要日期
+    if (t.date && t.date < today) list.push('日期已经过去')
+    if (!t.date && t.start_time) list.push('定了开始时间就需要日期')
     if (!(minutes >= 5 && minutes <= 480)) list.push('时长需在 5-480 分钟')
     if (start !== null && start + minutes > 1440) list.push('跨越午夜')
     for (const o of chosen) {
-      if (o === t || o.date !== t.date || o.start_time == null || start === null) continue
+      if (o === t || !t.date || o.date !== t.date || !o.start_time || start === null) continue
       const os = toMin(o.start_time)
       if (start < os + Number(o.duration_minutes || 0) && os < start + minutes) list.push(`与「${o.title}」重叠`)
     }
@@ -97,6 +98,10 @@ const edit = (t) => {
   t.edited = true
   picked.add(t.key)
 }
+const undate = (t) => {
+  clearDate(t)
+  edit(t)
+}
 const removeItem = (t) => {
   items.value = items.value.filter((x) => x !== t)
   picked.delete(t.key)
@@ -112,7 +117,12 @@ const apply = async () => {
   busy.value = true
   try {
     items.value.forEach((t) => commitDate(t))
-    const payload = chosen.value.map(({ edited, warnings, group, ...rest }) => ({ ...rest, duration_minutes: Number(rest.duration_minutes) }))
+    const payload = chosen.value.map(({ edited, warnings, group, ...rest }) => ({
+      ...rest,
+      date: rest.date || null,
+      start_time: rest.date && rest.start_time ? rest.start_time : null,
+      duration_minutes: Number(rest.duration_minutes),
+    }))
     await ai.applyProposal(props.message, props.proposal, payload)
     // 成功的条目自动取消勾选；失败的保留勾选，修改后可直接重试
     items.value.forEach((t) => {
@@ -129,10 +139,10 @@ const apply = async () => {
 
 <template>
   <div class="overflow-hidden rounded-3xl border border-ink-line/70 bg-surface shadow-soft">
-    <div class="bg-gradient-to-br from-primary to-xp px-4 py-3 text-on-primary">
+    <div class="bg-primary px-4 py-3 text-on-primary">
       <p class="flex items-center gap-1 text-[10px] font-bold"><span class="flex items-center gap-1 opacity-80"><Icon icon="lucide:calendar-plus" width="12" />新建任务 · 可修改后导入</span><AiBadge inverse class="ml-auto" /></p>
       <h3 class="mt-0.5 truncate text-base font-black">{{ proposal.title }}</h3>
-      <p class="num mt-0.5 text-xs opacity-85">{{ items.length }} 个学习块 · {{ groups.length }} 天 · 合计 {{ formatMinutes(items.reduce((s, t) => s + Number(t.duration_minutes || 0), 0)) }}</p>
+      <p class="num mt-0.5 text-xs opacity-85">{{ items.length }} 个学习块 · {{ groups.filter((g) => g.date).length }} 天<template v-if="groups.some((g) => !g.date)"> + 待定</template> · 合计 {{ formatMinutes(items.reduce((s, t) => s + Number(t.duration_minutes || 0), 0)) }}</p>
     </div>
 
     <div class="px-4 py-3">
@@ -143,11 +153,12 @@ const apply = async () => {
       </label>
 
       <div class="space-y-3">
-        <div v-for="g in shown" :key="g.date">
+        <div v-for="g in shown" :key="g.date || 'undated'">
           <label class="mb-1.5 flex cursor-pointer items-center gap-2 text-[11px] font-black text-ink-soft">
             <input v-if="!dayState(g).empty" type="checkbox" class="accent-primary" :checked="dayState(g).all" :indeterminate.prop="dayState(g).some" :aria-label="`选择 ${g.date} 的任务`" @change="toggleDay(g)" />
             <Icon v-else icon="lucide:circle-check" width="14" class="text-success" />
-            {{ relativeDay(g.date) }}<span class="num font-semibold text-ink-mute">{{ dayjs(g.date).format('M/D') }}</span>
+            <template v-if="g.date">{{ relativeDay(g.date) }}<span class="num font-semibold text-ink-mute">{{ dayjs(g.date).format('M/D') }}</span></template>
+            <template v-else>先不定日期<span class="font-semibold text-ink-mute">导入后在收集箱</span></template>
             <span class="ml-auto font-semibold text-ink-mute">{{ g.items.length }} 块 · {{ formatMinutes(g.minutes) }}</span>
           </label>
 
@@ -172,14 +183,15 @@ const apply = async () => {
 
               <div v-if="!done(t)" class="mt-1.5 flex flex-wrap items-center gap-1.5 pl-6">
                 <input v-model="t.date" type="date" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink" :aria-label="`${t.title} 的日期`" @input="edit(t)" @blur="commit(t)" @keydown.enter.prevent="commit(t)" />
-                <input v-model="t.start_time" type="time" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink" :aria-label="`${t.title} 的开始时间`" @input="edit(t)" />
+                <input v-model="t.start_time" type="time" class="num rounded-lg border border-ink-line bg-surface px-1.5 py-1 text-[11px] text-ink disabled:opacity-40" :disabled="!t.date" :aria-label="`${t.title} 的开始时间`" @input="edit(t)" />
                 <span class="flex items-center gap-1 rounded-lg border border-ink-line bg-surface px-1.5 py-0.5">
                   <input v-model.number="t.duration_minutes" type="number" min="5" max="480" step="5" class="num w-11 bg-transparent text-[11px] text-ink outline-none" :aria-label="`${t.title} 的时长（分钟）`" @input="edit(t)" />
                   <span class="text-[10px] text-ink-mute">分钟</span>
                 </span>
                 <span v-if="t.start_time" class="num text-[10px] text-ink-mute">至 {{ endOf(t) }}</span>
+                <button v-if="t.date" type="button" class="rounded-lg px-1.5 py-1 text-[10px] font-bold text-ink-mute hover:bg-surface hover:text-ink" :aria-label="`${t.title} 先不定日期`" @click="undate(t)">不定日期</button>
               </div>
-              <p v-else class="num mt-0.5 pl-6 text-[11px] text-success">{{ result(t).summary || `${t.start_time} · ${t.duration_minutes} 分钟` }} · 已导入</p>
+              <p v-else class="num mt-0.5 pl-6 text-[11px] text-success">{{ result(t).summary || `${t.start_time || '无日期'} · ${t.duration_minutes} 分钟` }} · 已导入</p>
 
               <p v-if="t.note && !done(t)" class="mt-1 pl-6 text-[11px] leading-4 text-ink-mute">{{ t.note }}</p>
               <div v-if="t.links?.length" class="mt-1 flex flex-wrap gap-1 pl-6">

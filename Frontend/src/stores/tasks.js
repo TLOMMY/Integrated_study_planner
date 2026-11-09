@@ -5,13 +5,16 @@ import { todayStr } from '@/utils/dates'
 import { useHomeStore } from './home'
 import { useUiStore } from './ui'
 
-const emptyCounts = () => ({ today: 0, today_done: 0, overdue: 0, upcoming: 0, completed: 0 })
+const emptyCounts = () => ({ today: 0, today_done: 0, overdue: 0, upcoming: 0, completed: 0, future: 0, inbox: 0 })
 
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
     today: [],
     overdue: [],
     upcoming: [],
+    // 任务页的"即将"（有日期、在今天以后）与"收集箱"（没有日期）
+    future: [],
+    inbox: [],
     completed: [],
     counts: emptyCounts(),
     loading: false,

@@ -40,8 +40,12 @@ def test_views_today_overdue_upcoming(client, auth):
     assert titles("today") == {"今天的"}
     assert titles("overdue") == {"昨天的"}
     assert titles("upcoming") == {"明天的", "收集箱"}
+    # 1.2 任务页：以后的 / 收集箱 分开
+    assert titles("future") == {"明天的"}
+    assert titles("inbox") == {"收集箱"}
     counts = body(client.get("/task/list", headers=auth))["counts"]
     assert counts["today"] == 1 and counts["overdue"] == 1 and counts["upcoming"] == 2
+    assert counts["future"] == 1 and counts["inbox"] == 1
 
 
 def test_complete_is_idempotent_and_reversible(client, auth):

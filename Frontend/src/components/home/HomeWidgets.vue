@@ -71,7 +71,7 @@ onActivated(load)
     <RouterLink
       v-if="isMonday"
       :to="{ name: 'report', query: { week: lastWeek } }"
-      class="flex items-center gap-3 rounded-3xl bg-gradient-to-r from-primary to-xp px-4 py-3.5 text-on-primary shadow-lift"
+      class="flex items-center gap-3 rounded-3xl bg-primary px-4 py-3.5 text-on-primary shadow-lift"
     >
       <Icon icon="lucide:file-chart-column" width="22" class="shrink-0" />
       <span class="flex-1">

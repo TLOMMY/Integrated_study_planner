@@ -1,6 +1,7 @@
 <script setup>
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import { subjectInk, subjectOf } from '@/utils/subjects'
 
 defineProps({
   open: { type: Boolean, default: false },
@@ -14,7 +15,7 @@ const WEEK = ['', '一', '二', '三', '四', '五', '六', '日']
   <BottomSheet :open="open" @close="emit('close')">
     <template v-if="course">
       <div class="flex items-start gap-3 pt-3">
-        <div class="h-12 w-1.5 shrink-0 rounded-full" :style="{ background: course.color }" />
+        <div class="h-12 w-1.5 shrink-0 rounded-full" :style="{ background: subjectInk(subjectOf(course)) }" />
         <div class="min-w-0 flex-1">
           <h2 class="text-lg font-black text-ink">{{ course.course_name }}</h2>
           <p class="mt-0.5 text-xs text-ink-mute">{{ course.semester }}</p>

@@ -118,17 +118,17 @@ onMounted(() => load())
             </span>
             <div class="min-w-0 flex-1">
               <p class="truncate text-[15px] font-black text-ink">{{ plan.title }}</p>
-              <p class="mt-0.5 truncate text-xs text-ink-mute">{{ plan.goal || `${plan.start_date} ~ ${plan.end_date}` }}</p>
+              <p class="mt-0.5 truncate text-xs text-ink-mute">{{ plan.goal || (plan.undated ? '不设日期' : `${plan.start_date} ~ ${plan.end_date}`) }}</p>
             </div>
             <span
               class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold"
               :class="plan.status === 'completed' ? 'bg-success-light text-success' : plan.expired ? 'bg-danger-light text-danger' : 'bg-primary-light text-primary'"
             >
-              {{ inTrash ? `${plan.purge_in_days} 天后删除` : plan.status === 'active' ? (plan.expired ? '已过期' : `剩 ${plan.remaining_days} 天`) : plan.status_label }}
+              {{ inTrash ? `${plan.purge_in_days} 天后删除` : plan.status === 'active' ? (plan.expired ? '已过期' : plan.undated ? '长期' : `剩 ${plan.remaining_days} 天`) : plan.status_label }}
             </span>
           </div>
           <div class="mt-3 flex items-center gap-3">
-            <div class="h-2 flex-1 overflow-hidden rounded-full bg-ink-line"><div class="h-full rounded-full bg-gradient-to-r from-primary to-xp" :style="{ width: `${plan.progress}%` }" /></div>
+            <div class="h-2 flex-1 overflow-hidden rounded-full bg-ink-line"><div class="h-full rounded-full bg-primary" :style="{ width: `${plan.progress}%` }" /></div>
             <span class="num text-xs font-black text-ink">{{ plan.progress }}%</span>
           </div>
           <p class="mt-2 flex gap-3 text-[11px] font-semibold text-ink-mute">

@@ -11,8 +11,8 @@ from app.api.deps import DB, CurrentUser
 from app.core import timeutil
 from app.core.errors import ApiError, ok
 from app.models import FocusRecord, StudyPlan
-from app.schemas import AiCommitIn, AiPlanIn, IdsIn, PlanIn, PlanUpdateIn
-from app.services import agenda, gamification
+from app.schemas import AiCommitIn, AiPlanIn, AutoPlanCommitIn, IdsIn, PlanIn, PlanUpdateIn
+from app.services import agenda, autoplan, gamification
 from app.services.tasks import get_owned_plan, hard_delete_plan, plan_to_dict, purge_trash
 
 plans_router = APIRouter(prefix="/study-plans", tags=["学习计划"])
@@ -82,11 +82,15 @@ def plan_detail(plan_id: int, user: CurrentUser, db: DB):
 @plans_router.post("", summary="创建计划")
 def create_plan(payload: PlanIn, user: CurrentUser, db: DB):
     tracker = gamification.RewardTracker(db, user)
-    start = payload.start_date or timeutil.today().isoformat()
-    end = payload.end_date or (timeutil.parse_date(start) + timedelta(days=6)).isoformat()
+    if payload.undated:
+        start = end = None
+        days = 0
+    else:
+        start = payload.start_date or timeutil.today().isoformat()
+        end = payload.end_date or (timeutil.parse_date(start) + timedelta(days=6)).isoformat()
+        days = (timeutil.parse_date(end) - timeutil.parse_date(start)).days + 1
     plan = StudyPlan(user_id=user.id, title=payload.title, goal=payload.goal, start_date=start, end_date=end,
-                     duration_days=(timeutil.parse_date(end) - timeutil.parse_date(start)).days + 1,
-                     status="active", source="manual")
+                     duration_days=days, status="active", source="manual")
     db.add(plan)
     db.flush()
     reward = tracker.finish()
@@ -101,8 +105,12 @@ def update_plan(plan_id: int, payload: PlanUpdateIn, user: CurrentUser, db: DB):
     if plan.deleted_at is not None:
         raise ApiError(409, "计划在回收站里，请先恢复再修改")
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    undated = changes.pop("undated", None)
     for field, value in changes.items():
         setattr(plan, field, value)
+    if undated:
+        plan.start_date = plan.end_date = None
+        plan.duration_days = 0
     if plan.start_date and plan.end_date:
         if plan.end_date < plan.start_date:
             raise ApiError(422, "结束日期不能早于开始日期")
@@ -169,6 +177,18 @@ def ai_commit(payload: AiCommitIn, user: CurrentUser, db: DB):
 @day_router.get("/timeline", summary="某天的时间轴：课程 + 定时任务 + 空闲时段")
 def day_timeline(user: CurrentUser, db: DB, date: Optional[str] = None):
     return ok(agenda.build_day(db, user, timeutil.parse_date(date, timeutil.today())))
+
+
+@day_router.get("/auto-plan", summary="一键排今天：按规则把待办 / 考前复习 / 课后回顾填进剩下的空闲段（只预览，不调用大模型）")
+def auto_plan_preview(user: CurrentUser, db: DB, date: Optional[str] = None):
+    data = autoplan.preview(db, user, timeutil.parse_date(date, timeutil.today()))
+    return ok(data, f"排好了 {len(data['items'])} 项" if data["items"] else "今天没有需要安排的内容")
+
+
+@day_router.post("/auto-plan/commit", summary="写入一键排程里勾选的条目（逐条校验，返回每条结果）")
+def auto_plan_commit(payload: AutoPlanCommitIn, user: CurrentUser, db: DB):
+    data = autoplan.commit(db, user, [item.model_dump() for item in payload.items])
+    return ok(data, f"已加入 {data['ok_count']} 项" + (f"，{data['fail_count']} 项未加入" if data["fail_count"] else ""))
 
 
 @home_router.get("/summary", summary="首页汇总：问候、下一节课、今日进度、连续打卡、等级")

@@ -3,19 +3,33 @@ import { computed, reactive, ref, watch } from 'vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
+import { SUBJECTS, subjectBg, subjectInk, subjectOf } from '@/utils/subjects'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   course: { type: Object, default: null },
   preset: { type: Object, default: () => ({}) },
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'saved'])
 
 const timetable = useTimetableStore()
 const ui = useUiStore()
 const saving = ref(false)
 
-const COLORS = ['#4F6EF7', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16', '#F97316', '#14B8A6']
+// 旧版的课程颜色（与后端 schedule.PALETTE 相同）：选"按课程名"时存其中一个，课表页按课程名分科
+const LEGACY = ['#4F6EF7', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#06B6D4', '#EC4899', '#84CC16', '#F97316', '#14B8A6']
+const legacyColor = (name) => LEGACY[[...(name || '')].reduce((sum, ch) => sum + ch.codePointAt(0), 0) % LEGACY.length]
+const pickedSubject = (course) => {
+  if (!course?.color) return 'auto'
+  const key = subjectOf({ course_name: '', color: course.color })
+  return key === 'def' ? 'auto' : key
+}
+const autoLabel = computed(() => SUBJECTS.find((s) => s.key === subjectOf(form.course_name || ''))?.label || '其他')
+const colorToSave = () => {
+  if (form.subject !== 'auto') return SUBJECTS.find((s) => s.key === form.subject).ink
+  const old = props.course?.color
+  return old && pickedSubject(props.course) === 'auto' ? old : legacyColor(form.course_name.trim())
+}
 const DAYS = ['一', '二', '三', '四', '五', '六', '日']
 const MODES = [
   { key: 'all', label: '每周' },
@@ -55,7 +69,8 @@ watch(
       from: range.from,
       to: range.to,
       custom: new Set(c?.weeks || []),
-      color: c?.color || COLORS[Math.floor(Math.random() * COLORS.length)],
+      // 分科：编辑器里选过的保留；以前随机分配的颜色算"按课程名"
+      subject: pickedSubject(c),
       note: c?.note || '',
     })
   },
@@ -93,12 +108,15 @@ const submit = async () => {
         start_period: form.start_period,
         end_period: form.end_period,
         weeks: weeks.value,
-        color: form.color,
+        color: colorToSave(),
         note: form.note.trim(),
       },
       props.course?.id,
     )
-    if (ok) emit('close')
+    if (ok) {
+      emit('saved')
+      emit('close')
+    }
   } catch (error) {
     ui.fail(error)
   } finally {
@@ -181,18 +199,22 @@ const submit = async () => {
       </div>
 
       <div>
-        <span class="label">颜色</span>
-        <div class="flex flex-wrap gap-2">
+        <span class="label">分科（课表页的颜色）</span>
+        <div class="flex flex-wrap gap-1.5">
+          <button type="button" class="chip" :class="form.subject === 'auto' && 'chip-active'" :aria-pressed="form.subject === 'auto'" @click="form.subject = 'auto'">
+            按课程名<span v-if="form.subject === 'auto'" class="text-[10px] opacity-75">（{{ autoLabel }}）</span>
+          </button>
           <button
-            v-for="c in COLORS"
-            :key="c"
+            v-for="s in SUBJECTS.filter((x) => x.key !== 'def')"
+            :key="s.key"
             type="button"
-            class="h-8 w-8 rounded-full ring-offset-2 transition"
-            :class="form.color === c && 'ring-2 ring-ink'"
-            :style="{ background: c }"
-            :aria-label="`颜色 ${c}`"
-            @click="form.color = c"
-          />
+            class="chip"
+            :class="form.subject === s.key && 'chip-active'"
+            :aria-pressed="form.subject === s.key"
+            @click="form.subject = s.key"
+          >
+            <i class="h-3 w-3 rounded-full" :style="{ background: subjectBg(s.key), boxShadow: `inset 0 0 0 3px ${subjectInk(s.key)}` }" />{{ s.label }}
+          </button>
         </div>
       </div>
 

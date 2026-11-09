@@ -15,7 +15,7 @@ import dataclasses
 import io
 import json
 import re
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -49,13 +49,15 @@ SYSTEM_PROMPT = """你是课程表识别助手。用户会给你一张课表截�
 请找出课表里的每一门课，只输出一个 JSON 对象，不要输出任何解释：
 {"courses": [{"course_name": "高等数学", "teacher": "张三", "classroom": "A101", "day_of_week": 1,
   "start_period": 1, "end_period": 2, "week_text": "1-16周(单)", "weeks": [1,3,5]}],
- "semester_start": "YYYY-MM-DD", "total_weeks": 18}
+ "semester_start": "YYYY-MM-DD", "total_weeks": 18,
+ "period_times": [{"period": 1, "start": "08:00", "end": "08:45"}]}
 规则：
 1. day_of_week：星期一=1 … 星期日=7，按课程所在的列判断；start_period / end_period 是第几节（整数），按所在的行判断。
 2. week_text 写周次（如 "1-16周"、"2-16周(双)"、"1-3,18周"），单双周必须写成 "(单)"/"(双)"；weeks 为对应的完整周次整数列表。课表没写周次时两者都省略。
 3. 同一门课在不同星期或不同节次上课时，拆成多条；同一格里叠放多门课时，逐门输出。
 4. 教师、教室看不清就填空字符串；看不清课程名的格子不要输出；不要编造课表上没有的课。
-5. semester_start、total_weeks 只有课表上明确写出时才输出，否则省略。"""
+5. semester_start、total_weeks 只有课表上明确写出时才输出，否则省略。
+6. period_times：课表的节次列上印了每节课的时间（如"第1节 08:00-08:45"）时，按节次顺序逐节输出；没印时间就省略，不要按常识猜。"""
 
 
 # ---------------------------------------------------------------- 文件预处理
@@ -180,6 +182,12 @@ def _messages(user: User, text: Optional[str], parts: List[dict]) -> List[dict]:
     context = (f"本校每天共 {len(periods)} 节课，节次时间："
                + "，".join(f"第{i}节 {p['start']}-{p['end']}" for i, p in enumerate(periods, start=1))
                + f"。本学期共 {int(user.total_weeks or 20)} 周。")
+    if text is not None and parts:
+        # 文字版 PDF 交给视觉模型：以图片为准（表格的行列关系、单双周写在哪一格都看得到），文字只用来核对字形
+        hint = (f"{context}\n请识别这张课表，以图片为准。下面是从同一个 PDF 提取的文字，表格结构可能错乱，"
+                f"只用来核对课程名、教室、周次里的字：\n\n{text[:6000]}")
+        return [{"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": [{"type": "text", "text": hint}, *parts]}]
     if text is not None:
         content = f"{context}\n以下是从 PDF 课表提取的文字（用空格保持了列的位置）：\n\n{text}"
         return [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": content}]
@@ -205,7 +213,7 @@ def no_vision_error(config: ModelConfig, source: str, detail: str = "") -> ApiEr
     return ApiError(422, message, data)
 
 
-def _call(config: ModelConfig, messages: List[dict], with_images: bool, source: str = "image") -> str:
+def _call(config: ModelConfig, messages: List[dict], with_images: bool, source: str = "image", what: str = "课表") -> str:
     config = dataclasses.replace(config, timeout=VISION_TIMEOUT)
     try:
         # 不少视觉模型不支持 response_format，图片请求直接靠提示词约束 JSON；结构化抽取一律关闭思考
@@ -215,7 +223,7 @@ def _call(config: ModelConfig, messages: List[dict], with_images: bool, source: 
             raise no_vision_error(config, source, error.message) from None
         if error.message == "模型响应超时":
             raise ApiError(504, f"「{model_text(config)}」{VISION_TIMEOUT} 秒内没有返回识别结果，请稍后重试；"
-                                "图片可以裁剪到只剩课表区域，或改用文字版 PDF",
+                                f"图片可以裁剪到只剩{what}区域，或改用文字版 PDF",
                            {"reason": "timeout", "model": model_text(config)}) from None
         raise ApiError(502, f"模型识别失败：{error.message}",
                        {"reason": "model_error", "model": model_text(config)}) from None
@@ -236,7 +244,7 @@ def parse_model_output(reply: str) -> dict:
         except ValueError:
             continue
     if salvaged:
-        return {"courses": salvaged, **{k: v for k, v in data.items() if k in ("semester_start", "total_weeks")}}
+        return {"courses": salvaged, **{k: v for k, v in data.items() if k in ("semester_start", "total_weeks", "period_times")}}
     raise ApiError(502, "模型没有返回可识别的课表，请换一张更清晰的图片或重试", {"reason": "bad_output"})
 
 
@@ -298,19 +306,69 @@ def _normalize(data: dict, user: User) -> Tuple[List[dict], List[dict], int, Opt
     return courses, skipped, total, start
 
 
-def recognize_timetable(db: Session, user: User, config: ModelConfig, filename: str, content: bytes) -> dict:
+def detected_period_times(raw) -> Optional[List[Dict[str, str]]]:
+    """
+    课表上印的节次时间：按节次排好、HH:MM、每节开始早于结束且不早于上一节结束、共 4-16 节时才采用，
+    否则返回 None（继续用设置里的节次表）。允许缺少 period 字段，按出现顺序编号。
+    """
+    if not isinstance(raw, list) or not 4 <= len(raw) <= 16:
+        return None
+    items = []
+    for index, item in enumerate(raw, start=1):
+        if not isinstance(item, dict):
+            return None
+        start, end = _hm(item.get("start")), _hm(item.get("end"))
+        if not start or not end:
+            return None
+        period = item.get("period")
+        items.append((period if isinstance(period, int) else index, start, end))
+    items.sort(key=lambda x: x[0])
+    if [p for p, _, _ in items] != list(range(1, len(items) + 1)):
+        return None
+    previous = "00:00"
+    for _, start, end in items:
+        if not (previous <= start < end):
+            return None
+        previous = end
+    return [{"start": s, "end": e} for _, s, e in items]
+
+
+def _hm(value) -> Optional[str]:
+    match = re.fullmatch(r"\s*(\d{1,2})[:：](\d{2})\s*", str(value or ""))
+    if not match or int(match.group(1)) > 23 or int(match.group(2)) > 59:
+        return None
+    return f"{int(match.group(1)):02d}:{match.group(2)}"
+
+
+def recognize_timetable(db: Session, user: User, config: ModelConfig, filename: str, content: bytes,
+                        vision_fallback: Optional[ModelConfig] = None) -> dict:
+    """
+    vision_fallback：所选模型不能看图时改用的视觉模型（服务器配置的豆包）。
+    有它时，文字版 PDF 也渲染成图片一起交给它：只看文字时表格的行列关系会丢，节次时间和单双周容易认错。
+    """
     source, text, parts = _prepare(filename, content)
-    if parts and not supports_vision_guess(config):
+    text_only = not supports_vision_guess(config)
+    if vision_fallback is not None and text_only:
+        if source == "pdf-text":
+            parts = _pdf_images(content)
+            source = "pdf-text+image"
+        config = vision_fallback
+    elif parts and text_only:
         raise no_vision_error(config, source)
     reply = _call(config, _messages(user, text, parts), with_images=bool(parts), source=source)
-    courses, skipped, total, semester_start = _normalize(parse_model_output(reply), user)
+    data = parse_model_output(reply)
+    courses, skipped, total, semester_start = _normalize(data, user)
     if not courses:
-        hint = "PDF 里" if source == "pdf-text" else "图片里"
+        hint = "PDF 里" if source.startswith("pdf-text") else "图片里"
         raise ApiError(422, f"没有从{hint}识别出任何课程，请确认文件是完整的课表"
-                            + ("（含星期表头和节次列）" if source != "pdf-text" else ""),
+                            + ("（含星期表头和节次列）" if not source.startswith("pdf-text") else ""),
                        {"reason": "no_courses", "skipped": skipped, "source": source, "model": model_text(config)})
+    # 课表上印了节次时间、并且和设置里的不一样时，预览里一并返回，由同学决定是否更新
+    printed = detected_period_times(data.get("period_times"))
+    if printed == schedule.period_times(user):
+        printed = None
     return import_common.build_preview(
         db, user, file_name=filename or None, fmt="ai", courses=courses, skipped=skipped,
         semester=None, semester_start=semester_start, total_weeks=total,
-        source=source, model=model_text(config),
+        source=source, model=model_text(config), period_times=printed,
     )

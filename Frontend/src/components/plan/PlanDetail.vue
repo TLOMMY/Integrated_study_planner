@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
+import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import TaskItem from '@/components/task/TaskItem.vue'
@@ -48,7 +49,31 @@ const toggle = async (task) => {
   plans.load()
 }
 const setStatus = async (status) => {
-  plan.value = await plans.update(plan.value.id, { status }, status === 'archived' ? '已归档' : status === 'completed' ? '已标记完成' : '已恢复')
+  const wasArchived = plan.value.status === 'archived'
+  plan.value = await plans.update(plan.value.id, { status }, status === 'archived' ? '已归档，未完成的任务暂时不出现在今天和即将里' : status === 'completed' ? '已标记完成' : '已恢复')
+  if (status === 'active' && wasArchived) await offerShift()
+  tasks.afterChange()
+}
+
+/**
+ * 从归档恢复时，如果未完成的任务日期已经过了，问一句要不要整体顺延：
+ * 以最早的那天对齐到今天，任务之间的间隔、时刻和时长保持不变。
+ */
+const offerShift = async () => {
+  const open = (plan.value.tasks || []).filter((t) => !t.completed && t.due_date)
+  const earliest = open.map((t) => t.due_date).sort()[0]
+  const today = todayStr()
+  if (!earliest || earliest >= today) return
+  const days = dayjs(today).diff(dayjs(earliest), 'day')
+  const ok = await ui.confirm({
+    title: '未完成的任务日期已过',
+    message: `有 ${open.length} 个未完成的任务最早排在 ${dayjs(earliest).format('M月D日')}。整体顺延 ${days} 天，从今天开始？任务之间的间隔和时刻保持不变。`,
+    confirmText: `顺延 ${days} 天`,
+    cancelText: '保持原日期',
+  })
+  if (!ok) return
+  await tasks.batch({ ids: open.map((t) => t.id), action: 'move', shift_days: days }, `已顺延 ${open.length} 个任务`).catch(ui.fail)
+  await load()
 }
 const remove = async () => {
   if (await plans.remove(plan.value)) emit('close')
@@ -56,7 +81,7 @@ const remove = async () => {
 </script>
 
 <template>
-  <BottomSheet :open="Boolean(planId)" :title="plan?.title || ''" :subtitle="plan ? `${plan.start_date} ~ ${plan.end_date} · ${plan.status_label}` : ''" @close="emit('close')">
+  <BottomSheet :open="Boolean(planId)" :title="plan?.title || ''" :subtitle="plan ? `${plan.undated ? '不设日期' : `${plan.start_date} ~ ${plan.end_date}`} · ${plan.status_label}` : ''" @close="emit('close')">
     <div v-if="!plan" class="space-y-2 pb-4"><div v-for="i in 3" :key="i" class="skeleton h-14" /></div>
     <template v-else>
       <p v-if="plan.goal" class="rounded-2xl bg-background px-4 py-3 text-sm text-ink-soft">🎯 {{ plan.goal }}</p>
@@ -89,5 +114,5 @@ const remove = async () => {
     </template>
   </BottomSheet>
   <!-- 放在详情弹层之后挂载，保证叠在它上面 -->
-  <TaskEditor :open="editor.open" :task="editor.task" :defaults="{ plan_id: plan?.id, due_date: todayStr() }" @close="editor.open = false" @saved="load" />
+  <TaskEditor :open="editor.open" :task="editor.task" :defaults="{ plan_id: plan?.id, due_date: plan?.undated ? null : todayStr() }" @close="editor.open = false" @saved="load" />
 </template>

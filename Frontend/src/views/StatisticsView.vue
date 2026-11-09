@@ -136,7 +136,7 @@ onActivated(() => stats.data && load())
 
     <div v-else-if="d" class="lg:mt-5 lg:grid lg:grid-cols-2 lg:gap-4">
       <!-- 等级 -->
-      <section class="mt-4 rounded-[28px] bg-gradient-to-br from-xp to-primary p-5 text-on-primary shadow-lift lg:mt-0 lg:order-1">
+      <section class="mt-4 rounded-[28px] bg-primary p-5 text-on-primary shadow-lift lg:mt-0 lg:order-1">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs opacity-80">当前等级</p>
@@ -310,7 +310,7 @@ onActivated(() => stats.data && load())
         </div>
         <div class="grid grid-cols-4 gap-3 lg:grid-cols-8">
           <button v-for="a in d.achievements" :key="a.code" class="flex flex-col items-center gap-1.5" type="button" @click="badge = a">
-            <span class="relative flex h-14 w-14 items-center justify-center rounded-2xl" :class="a.unlocked ? 'bg-gradient-to-br from-flame-glow to-flame text-on-flame shadow-soft' : 'bg-background text-ink-mute'">
+            <span class="relative flex h-14 w-14 items-center justify-center rounded-2xl" :class="a.unlocked ? 'bg-gold text-ink shadow-soft' : 'bg-background text-ink-mute'">
               <Icon :icon="a.icon" width="24" />
               <Icon v-if="!a.unlocked" icon="lucide:lock" width="12" class="absolute bottom-1 right-1" />
             </span>
@@ -354,7 +354,7 @@ onActivated(() => stats.data && load())
 
     <BottomSheet :open="Boolean(badge)" @close="badge = null">
       <div v-if="badge" class="flex flex-col items-center pb-2 pt-4 text-center">
-        <span class="flex h-20 w-20 items-center justify-center rounded-3xl" :class="badge.unlocked ? 'bg-gradient-to-br from-flame-glow to-flame text-on-flame shadow-lift' : 'bg-background text-ink-mute'">
+        <span class="flex h-20 w-20 items-center justify-center rounded-3xl" :class="badge.unlocked ? 'bg-gold text-ink shadow-lift' : 'bg-background text-ink-mute'">
           <Icon :icon="badge.icon" width="36" />
         </span>
         <h3 class="mt-4 text-lg font-black text-ink">{{ badge.title }}</h3>

@@ -45,10 +45,10 @@ const openExams = (initial = null) => {
   sheet.value = 'exams'
 }
 const loadExams = () => timetable.loadExams().catch(() => {})
-/** 首页考试卡片跳过来时：/timetable?exams=1 或 ?exams=new */
+/** 首页考试卡片跳过来时：/timetable?exams=1、?exams=new（新建）或 ?exams=import（导入考试安排） */
 const handleQuery = () => {
   if (!route.query.exams) return
-  openExams(route.query.exams === 'new' ? 'new' : null)
+  openExams(['new', 'import'].includes(route.query.exams) ? route.query.exams : null)
   router.replace({ query: {} })
 }
 

@@ -8,8 +8,8 @@ const routes = [
     path: '/',
     component: MainLayout,
     children: [
-      { path: '', redirect: '/today-task' },
-      { path: 'today-task', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '今日' } },
+      { path: '', redirect: '/view' },
+      { path: 'today-task', name: 'home', component: () => import('@/views/HomeView.vue'), meta: { title: '任务' } },
       { path: 'timetable', name: 'timetable', component: () => import('@/views/TimetableView.vue'), meta: { title: '课表' } },
       { path: 'ai', name: 'ai', component: () => import('@/views/AiAssistantView.vue'), meta: { title: 'AI 规划' } },
       { path: 'view', name: 'view', component: () => import('@/views/DayView.vue'), meta: { title: '日程' } },
@@ -31,7 +31,7 @@ const routes = [
   // 隐私政策与用户协议（公开，登录前后都能打开）
   { path: '/privacy', name: 'privacy', component: () => import('@/views/PrivacyView.vue'), meta: { title: '隐私政策', public: true } },
   { path: '/terms', name: 'terms', component: () => import('@/views/TermsView.vue'), meta: { title: '用户协议', public: true } },
-  { path: '/:pathMatch(.*)*', redirect: '/today-task' },
+  { path: '/:pathMatch(.*)*', redirect: '/view' },
 ]
 
 const router = createRouter({
@@ -43,7 +43,7 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.meta.public) {
-    return auth.isLoggedIn && to.name === 'login' ? { name: 'home' } : true
+    return auth.isLoggedIn && to.name === 'login' ? { name: 'view' } : true
   }
   if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
   if (!auth.user) {
@@ -54,7 +54,7 @@ router.beforeEach(async (to) => {
       if (!auth.isLoggedIn) return { name: 'login', query: { redirect: to.fullPath } }
     }
   }
-  if (to.meta.admin && !auth.user?.is_admin) return { name: 'home' }
+  if (to.meta.admin && !auth.user?.is_admin) return { name: 'view' }
   return true
 })
 

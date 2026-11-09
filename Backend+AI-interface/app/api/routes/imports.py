@@ -6,19 +6,22 @@
   POST /import/timetable/web      教务系统网页（.html/.mhtml/粘贴的源代码或 JSON），参数同上
   POST /import/timetable/ai       图片 / PDF 交给大模型识别，只返回预览
   POST /import/timetable/commit   提交（可能经用户勾选过的）预览课程，AI 识别结果走这里，不会再次调用模型
+  POST /import/exams              考试安排：表格 / 网页 / PDF / 截图或粘贴的文字，只返回预览（能在本地解析的不调用模型）
+  POST /import/exams/commit       提交预览中勾选的考试，同名同日的已有考试跳过
 """
 
+import json
 from typing import Callable, List, Literal, Optional
 
 from fastapi import APIRouter, File, Form, UploadFile
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.ai import providers
 from app.ai.llm import ModelConfig
 from app.api.deps import DB, CurrentUser
 from app.core.config import settings
 from app.core.errors import ApiError, ok
-from app.schemas import DATE_PATTERN
+from app.schemas import DATE_PATTERN, ExamIn, PeriodTime, TimetableSettingsIn
 from app.services import import_common, schedule
 from app.services.import_web import parse_web_timetable
 from app.services.importer import parse_timetable
@@ -125,7 +128,9 @@ def import_timetable_ai(
 
     content = _read_upload(file)
     config = _ai_config(db, user, provider_id)
-    data = vision.recognize_timetable(db, user, config, file.filename or "", content)
+    # 没有明确选自己的模型时，所选模型不能看图就交给服务器的视觉模型（豆包）；明确选了自己的模型就只用它
+    fallback = providers.vision_env_config(user) if (provider_id or "").strip() in ("", "auto", "active", "env") else None
+    data = vision.recognize_timetable(db, user, config, file.filename or "", content, vision_fallback=fallback)
     return ok(data, f"识别到 {data['success_count']} 门课程，请核对后导入")
 
 
@@ -155,12 +160,31 @@ class ImportCommitIn(BaseModel):
     # current 导入到当前课表 / new 新建一套课表
     target: Literal["current", "new"] = "current"
     set_name: Optional[str] = Field(default=None, max_length=40)
+    # 识别出的节次时间：同学勾选"同时更新节次时间"时传入，课程时间按它重新计算
+    period_times: Optional[List[PeriodTime]] = None
+
+    @field_validator("period_times")
+    @classmethod
+    def _period_order(cls, value):
+        # 与学期设置同一套校验：4-16 节，按顺序且每节开始早于结束
+        return TimetableSettingsIn.model_validate({"period_times": value}).period_times if value is not None else None
 
 
 @router.post("/timetable/commit", summary="提交预览中的课程（AI 识别结果），服务器重新校验后写入")
 def commit_timetable(payload: ImportCommitIn, user: CurrentUser, db: DB):
     if not payload.courses:
         raise ApiError(422, "请至少勾选一门课程")
+    period_json = None
+    if payload.period_times:
+        period_json = json.dumps([p.model_dump() for p in payload.period_times], ensure_ascii=False)
+        if payload.target == "new":
+            # 新建一套：先建好并切过去，节次时间只写进新的那套，原来的课表不受影响
+            schedule.create_set(db, user, payload.set_name or (payload.file_name or "").rsplit(".", 1)[0][:40] or "导入的课表",
+                                copy_settings=True, period_times_json=period_json, dedupe=True)
+            payload.target = "current"
+            payload.replace = True
+        else:
+            user.period_times = period_json
     total = payload.total_weeks or int(user.total_weeks or 20)
     courses = []
     for index, raw in enumerate(payload.courses, start=1):
@@ -177,3 +201,42 @@ def commit_timetable(payload: ImportCommitIn, user: CurrentUser, db: DB):
     )
     return ok({"semester": semester, "courses": preview, "success_count": len(preview), "reward": reward},
               f"已导入 {len(preview)} 门课程")
+
+
+# ---------------------------------------------------------------- 考试安排
+@router.post("/exams", summary="导入考试安排：上传表格 / 网页 / PDF / 截图，或粘贴文字；只返回预览，确认后调用 /import/exams/commit")
+def import_exams(
+    user: CurrentUser,
+    db: DB,
+    file: Optional[UploadFile] = File(default=None, description=".xlsx / .xls / .csv / .html / .txt / PDF / 截图"),
+    text: Optional[str] = Form(default=None, description="粘贴的考试安排文字（与 file 二选一）"),
+    provider_id: Optional[str] = Form(default=None, description="本地解析不出来时用哪个模型识别；不传则用当前启用的模型"),
+):
+    from app.services import exam_import
+
+    if file is None and not (text or "").strip():
+        raise ApiError(422, "请上传文件或粘贴考试安排")
+    content = None if file is None else _read_upload(file)
+    choice = (provider_id or "").strip()
+    fallback = providers.vision_env_config(user) if choice in ("", "auto", "active", "env") else None
+    data = exam_import.preview(
+        db, user, filename=(file.filename or "") if file else "", content=content,
+        text=None if file is not None else text, config_factory=lambda: _ai_config(db, user, provider_id),
+        vision_fallback=fallback,
+    )
+    return ok(data, f"找到 {data['count']} 场考试，请核对后导入")
+
+
+class ExamCommitIn(BaseModel):
+    items: List[ExamIn] = Field(min_length=1, max_length=100)
+
+
+@router.post("/exams/commit", summary="导入预览中勾选的考试；同名同日的已有考试跳过")
+def commit_exams(payload: ExamCommitIn, user: CurrentUser, db: DB):
+    from app.services import exam_import
+
+    data = exam_import.commit(db, user, [item.model_dump() for item in payload.items])
+    message = f"已添加 {data['created_count']} 场考试"
+    if data["skipped_count"]:
+        message += f"，{data['skipped_count']} 场已存在，已跳过"
+    return ok(data, message)

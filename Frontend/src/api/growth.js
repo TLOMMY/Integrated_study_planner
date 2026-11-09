@@ -9,6 +9,15 @@ export const examApi = {
   create: (payload) => http.post('/exams', payload),
   update: (id, payload) => http.put(`/exams/${id}`, payload),
   remove: (id) => http.delete(`/exams/${id}`),
+  // 导入考试安排：上传文件或粘贴文字，只返回预览；本地解析不出来时才用模型识别（最长约 2 分钟）
+  importPreview: ({ file = null, text = null, providerId = null } = {}, onUploadProgress = null) => {
+    const form = new FormData()
+    if (file) form.append('file', file)
+    else form.append('text', text || '')
+    if (providerId) form.append('provider_id', providerId)
+    return http.post('/import/exams', form, { timeout: 150000, onUploadProgress })
+  },
+  importCommit: (items) => http.post('/import/exams/commit', { items }),
 }
 
 export const shareApi = {

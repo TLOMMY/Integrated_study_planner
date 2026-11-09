@@ -30,6 +30,9 @@ def _settings_payload(db, user: User) -> dict:
     return {
         "active": active,
         "resolved": providers.active_info(db, user),
+        # vision：服务器另配了能看图的模型（豆包），图片和扫描版 PDF 也能识别
+        "vision": {"configured": providers.vision_env_config() is not None, "name": providers.VISION_ENV_NAME,
+                   "model": settings.ARK_MODEL or None},
         "env": {"configured": env is not None, "name": providers.ENV_NAME,
                 "model": env.model if env else None,
                 "model_label": providers.model_label(env.model) if env else None,

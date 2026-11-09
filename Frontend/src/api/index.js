@@ -41,7 +41,7 @@ export const feedbackApi = {
   },
   // 截图需要登录才能看：以 Blob 取回，再用 URL.createObjectURL 显示
   image: (name) => http.get(`/feedback/images/${name}`, { responseType: 'blob', timeout: 30000 }),
-  mine: () => http.get('/feedback/mine'),
+  mine: (all = false) => http.get('/feedback/mine', { params: all ? { all: true } : {} }),
   markRead: (id) => http.post(`/feedback/${id}/read`),
 }
 
@@ -82,7 +82,7 @@ export const timetableApi = {
     if (target?.setName) form.append('set_name', target.setName)
     return http.post('/import/timetable', form, { params: { mode, replace: true }, timeout: 30000 })
   },
-  // 教务网页：保存的 .html/.mhtml，或把粘贴的源代码包装成文件上传（避开表单字段 1MB 限制）
+  // 教务网页：上传保存的 .html / .mhtml 页面（以文件上传，避开表单字段 1MB 限制）
   importWeb: (file, mode = 'preview', selected = null, target = null) => {
     const form = new FormData()
     form.append('file', file)
@@ -104,6 +104,9 @@ export const timetableApi = {
 
 export const dayApi = {
   timeline: (date) => http.get('/day/timeline', { params: { date } }),
+  // 一键排今天：本地规则排程（不消耗 AI 次数），先预览，确认后写入
+  autoPlan: (date) => http.get('/day/auto-plan', { params: { date } }),
+  commitAutoPlan: (items) => http.post('/day/auto-plan/commit', { items }),
 }
 
 export const studyApi = {

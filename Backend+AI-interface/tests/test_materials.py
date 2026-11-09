@@ -127,9 +127,12 @@ def test_invalid_files(client, auth):
     # 扫描件（没有文字层）
     response = upload(client, auth, make_pdf([[], [], []]))
     assert body(response, 422) is None and "扫描件" in response.json()["message"]
-    # 不是 PDF
-    response = upload(client, auth, b"PK\x03\x04 not a pdf", "notes.docx")
-    assert body(response, 415) is None and "PDF" in response.json()["message"]
+    # 不支持的格式
+    response = upload(client, auth, b"\xd0\xcf\x11\xe0 old doc", "notes.doc")
+    assert body(response, 415) is None and ".pptx" in response.json()["message"]
+    # 扩展名是 docx 但文件坏了
+    response = upload(client, auth, b"PK\x03\x04 not a zip", "notes.docx")
+    assert body(response, 422) is None and "损坏" in response.json()["message"]
     # 损坏的 PDF
     body(upload(client, auth, b"%PDF-1.7 garbage"), 422)
     # 空文件、超过大小

@@ -11,17 +11,20 @@ import { useUiStore } from '@/stores/ui'
 
 export const speechSupport = ref(typeof window !== 'undefined' && !isNativeApp() && Boolean(webSpeechCtor(window)))
 
+// Capacitor 插件是代理对象，访问任何属性（包括 then）都会被当成原生方法调用。
+// 把它作为 Promise 的结果（resolve / async 返回 / then 回调返回）都会被当成 thenable 去调用 then()，
+// 抛错后 Promise 永远不完成。所以这里始终返回 { plugin } 包装，由调用方解包。
 let pluginPromise = null
 const loadPlugin = () =>
   (pluginPromise ||= import('@capgo/capacitor-speech-recognition')
     .then(async ({ SpeechRecognition }) => {
       const { available } = await SpeechRecognition.available()
-      return available ? SpeechRecognition : null
+      return { plugin: available ? SpeechRecognition : null }
     })
-    .catch(() => null))
+    .catch(() => ({ plugin: null })))
 
 // 原生 App：插件可用且设备有语音识别服务才显示按钮
-if (typeof window !== 'undefined' && isNativeApp()) loadPlugin().then((plugin) => (speechSupport.value = Boolean(plugin)))
+if (typeof window !== 'undefined' && isNativeApp()) loadPlugin().then(({ plugin }) => (speechSupport.value = Boolean(plugin)))
 
 // 同一时间只允许一个输入框在听写
 let activeStop = null
@@ -74,7 +77,7 @@ export function useSpeech({ onText, onEnd } = {}) {
 
   // ------------------------------------------------------------ 安卓 App
   const startNative = async (base) => {
-    const plugin = await loadPlugin()
+    const { plugin } = await loadPlugin()
     if (!plugin) return ui.toast('这台设备没有可用的语音识别服务', 'warning')
     try {
       let { speechRecognition } = await plugin.checkPermissions()
@@ -129,7 +132,7 @@ export function useSpeech({ onText, onEnd } = {}) {
       return
     }
     if (isNativeApp()) {
-      loadPlugin().then((plugin) => plugin?.stop().catch(() => {}))
+      loadPlugin().then(({ plugin }) => plugin?.stop().catch(() => {}))
       // 有的设备 stop 后不再发 stopped 事件，稍后兜底收尾
       setTimeout(() => listening.value && cleanupNative(), 1500)
     }

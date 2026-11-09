@@ -16,6 +16,7 @@ import { useTasksStore } from '@/stores/tasks'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
 import { coursesOnDate } from '@/utils/dates'
+import { webNotify } from '@/utils/webNotify'
 import { reminderEnabled as classReminderEnabled } from './useClassReminder'
 
 const ENABLED_KEY = 'task-reminder-enabled'
@@ -51,16 +52,19 @@ export const setDefaultLead = (value) => {
 }
 
 // ---------------------------------------------------------------- 系统通知权限
+// Capacitor 插件是代理对象，访问任何属性（包括 then）都会被当成原生方法调用：
+// 把它直接作为 Promise 的结果，会被当成 thenable 调用 then() 并抛错，Promise 永远不完成。
+// 所以 plugin() 始终返回 { native } 包装，调用方解包后再用。
 let pluginPromise = null
 const plugin = () => {
-  if (!isNativeApp()) return Promise.resolve(null)
-  pluginPromise ||= import('@capacitor/local-notifications').then((m) => m.LocalNotifications).catch(() => null)
+  if (!isNativeApp()) return Promise.resolve({ native: null })
+  pluginPromise ||= import('@capacitor/local-notifications').then((m) => ({ native: m.LocalNotifications })).catch(() => ({ native: null }))
   return pluginPromise
 }
 
 /** 'granted' | 'denied' | 'prompt' | 'unsupported' */
 export async function notificationPermission() {
-  const native = await plugin()
+  const { native } = await plugin()
   if (native) {
     const { display } = await native.checkPermissions()
     return display === 'granted' ? 'granted' : display === 'denied' ? 'denied' : 'prompt'
@@ -71,7 +75,7 @@ export async function notificationPermission() {
 
 export async function requestNotificationPermission() {
   localStorage.setItem(ASKED_KEY, '1')
-  const native = await plugin()
+  const { native } = await plugin()
   if (native) {
     const { display } = await native.requestPermissions()
     scheduleResync()
@@ -82,12 +86,31 @@ export async function requestNotificationPermission() {
   return result === 'default' ? 'prompt' : result
 }
 
-const webNotify = (title, body, tag) => {
-  if (isNativeApp() || !('Notification' in window) || Notification.permission !== 'granted') return
+/**
+ * 安卓 12+ 的"闹钟和提醒"（精确闹钟）权限：没有时系统会推迟提醒，可能晚十几分钟。
+ * 返回 'granted' | 'denied' | 'unsupported'（网页 / 电脑端 / 旧版插件）。
+ */
+export async function exactAlarmPermission() {
+  const { native } = await plugin()
+  if (!native?.checkExactNotificationSetting) return 'unsupported'
   try {
-    new Notification(title, { body, tag })
+    const { exact_alarm: state } = await native.checkExactNotificationSetting()
+    return state === 'granted' ? 'granted' : 'denied'
   } catch {
-    // 部分浏览器（如安卓 Chrome）只允许 Service Worker 发通知，失败时只保留页面内提醒
+    return 'unsupported'
+  }
+}
+
+/** 打开系统设置里本应用的"闹钟和提醒"页；用户返回后再检查一次。 */
+export async function openExactAlarmSetting() {
+  const { native } = await plugin()
+  if (!native?.changeExactNotificationSetting) return 'unsupported'
+  try {
+    const { exact_alarm: state } = await native.changeExactNotificationSetting()
+    scheduleResync()
+    return state === 'granted' ? 'granted' : 'denied'
+  } catch {
+    return 'unsupported'
   }
 }
 
@@ -101,7 +124,7 @@ export async function testReminder() {
   const ui = useUiStore()
   ui.toast('这是一条测试提醒：复习高数（19:00 开始）', 'warning', 5000)
   webNotify('学习提醒', '这是一条测试提醒：复习高数（19:00 开始）', 'reminder-test')
-  const native = await plugin()
+  const { native } = await plugin()
   if (native) {
     await ensureChannel(native)
     await native.schedule({
@@ -144,7 +167,7 @@ function scheduleResync(delay = 1500) {
 }
 
 export async function cancelNativeReminders() {
-  const native = await plugin()
+  const { native } = await plugin()
   if (!native) return
   const { notifications } = await native.getPending().catch(() => ({ notifications: [] }))
   const ours = notifications.filter((n) => Number(n.id) >= ID_COURSE)
@@ -152,7 +175,7 @@ export async function cancelNativeReminders() {
 }
 
 async function syncNative(items) {
-  const native = await plugin()
+  const { native } = await plugin()
   if (!native) return
   let permission = await notificationPermission()
   // 第一次使用时主动申请一次权限；之后只在设置页手动开启
@@ -245,7 +268,7 @@ export function useReminders() {
     checkTimer = setInterval(check, 20000)
     document.addEventListener('visibilitychange', onVisible)
     // 点系统通知打开 App 后跳到对应页面（任务 → 首页，课程 → 日程）
-    plugin().then((native) => {
+    plugin().then(({ native }) => {
       if (!native || actionListener) return
       actionListener = native.addListener('localNotificationActionPerformed', (event) => {
         const route = event?.notification?.extra?.route

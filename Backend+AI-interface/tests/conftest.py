@@ -13,6 +13,8 @@ import pytest
 _TMP = Path(tempfile.mkdtemp(prefix="study_planner_test_"))
 os.environ["DATABASE_URL"] = "sqlite:///" + (_TMP / "test.db").as_posix()
 os.environ["DEEPSEEK_API_KEY"] = ""
+# 服务器视觉模型（豆包）也关掉：系统环境变量里可能配了真 Key，测试里需要时再用 monkeypatch 打开
+os.environ["ARK_API_KEY"] = ""
 os.environ["SEED_DEMO"] = "1"
 os.environ["FEEDBACK_DIR"] = (_TMP / "feedback").as_posix()
 os.environ["ADMIN_EMAILS"] = "admin@example.com"

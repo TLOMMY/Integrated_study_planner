@@ -15,8 +15,17 @@ export const agentApi = {
   remove: (id) => http.delete(`/ai/conversations/${id}`),
   messages: (id) => http.get(`/ai/conversations/${id}/messages`),
   importLegacy: (payload) => http.post('/ai/conversations/import', payload),
+  // 附件：先上传拿到 id，发送消息时带上；图片预览需要登录，以 Blob 取回
+  uploadAttachment: (file, conversationId = null, onUploadProgress = null) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (conversationId) form.append('conversation_id', String(conversationId))
+    return http.post('/ai/attachments', form, { timeout: 60000, onUploadProgress })
+  },
+  removeAttachment: (id) => http.delete(`/ai/attachments/${id}`),
+  attachmentContent: (id) => http.get(`/ai/attachments/${id}/content`, { responseType: 'blob', timeout: 30000 }),
   // 非流式兜底（浏览器不支持 ReadableStream 时）
-  chatSync: (id, message) => http.post(`/ai/conversations/${id}/chat/sync`, { message }, { timeout: 300000 }),
+  chatSync: (id, message, attachments = []) => http.post(`/ai/conversations/${id}/chat/sync`, { message, attachments }, { timeout: 300000 }),
   apply: (payload) => http.post('/ai/proposals/apply', payload, { timeout: 30000 }),
   // 撤销删除提案里已删除的条目：{ message_id, proposal_id, keys? }
   undo: (payload) => http.post('/ai/proposals/undo', payload, { timeout: 30000 }),
@@ -30,14 +39,14 @@ export const canStream = () => typeof window !== 'undefined' && 'ReadableStream'
  * 路径：POST /ai/conversations/{id}/chat（与 chatSync 相同的后端路由模块）。
  * 返回 Promise，结束（done 或连接断开）时 resolve；signal 可中止。
  */
-export async function streamChat(id, message, onEvent, { signal } = {}) {
+export async function streamChat(id, message, onEvent, { signal, attachments = [] } = {}) {
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' }
   const token = tokenStorage.get()
   if (token) headers.Authorization = `Bearer ${token}`
   let response
   try {
     response = await fetch(`${apiBase()}/ai/conversations/${id}/chat`, {
-      method: 'POST', headers, body: JSON.stringify({ message }), signal,
+      method: 'POST', headers, body: JSON.stringify({ message, attachments }), signal,
     })
   } catch (error) {
     if (error?.name === 'AbortError') throw error

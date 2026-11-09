@@ -23,6 +23,7 @@ def exam_to_dict(exam: Exam, today: Optional[date] = None) -> dict:
         "subject": exam.subject or "",
         "exam_date": exam.exam_date,
         "start_time": exam.start_time or "",
+        "end_time": exam.end_time or "",
         "location": exam.location or "",
         "note": exam.note or "",
         "weekday": timeutil.weekday_label(day) if day else "",

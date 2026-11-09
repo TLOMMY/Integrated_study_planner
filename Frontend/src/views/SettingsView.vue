@@ -42,6 +42,10 @@ const feedback = reactive({ category: 'bug', content: '', contact: '' })
 const study = ref(null)
 const prefs = reactive({ mode: 'auto', segments: [], avoid: [], earliest: '08:00', latest: '22:00', block_minutes: 45, rest_minutes: 10, daily_minutes: null })
 const prefsDirty = ref(false)
+const advancedSummary = computed(() => {
+  const avoid = SEGMENTS.filter((s) => prefs.avoid.includes(s.key)).map((s) => s.label)
+  return `${prefs.earliest}-${prefs.latest} · 每段 ${prefs.block_minutes} 分钟 · 休息 ${prefs.rest_minutes} 分钟${avoid.length ? ` · 不排${avoid.join('、')}` : ''}`
+})
 
 const user = computed(() => auth.user || {})
 const maxHour = computed(() => Math.max(1, ...(study.value?.profile.by_hour || [0])))
@@ -232,7 +236,7 @@ const toggleReminder = () => {
               <span class="block text-[11px] text-ink-mute">页面打开时，上课前 10 分钟提醒</span>
             </span>
             <span class="relative h-6 w-11 rounded-full transition" :class="reminderEnabled ? 'bg-primary' : 'bg-ink-line'">
-              <span class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all" :class="reminderEnabled ? 'left-[22px]' : 'left-0.5'" />
+              <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="reminderEnabled ? 'left-[22px]' : 'left-0.5'" />
             </span>
           </button>
         </div>
@@ -322,28 +326,40 @@ const toggleReminder = () => {
                   </button>
                 </div>
               </div>
-              <div>
-                <p class="label">尽量不排</p>
-                <div class="flex gap-2">
-                  <button v-for="seg in SEGMENTS" :key="seg.key" type="button" class="chip" :class="prefs.avoid.includes(seg.key) && 'border-danger bg-danger-light text-danger'" @click="toggleIn(prefs.avoid, seg.key, prefs.segments)">{{ seg.label }}</button>
+
+              <!-- 不常改的细项收进高级设置，默认折叠；标题行显示当前取值 -->
+              <details class="group rounded-2xl bg-background px-3 py-2.5">
+                <summary class="flex cursor-pointer list-none items-center gap-2 text-xs font-bold text-ink-soft [&::-webkit-details-marker]:hidden">
+                  <Icon icon="lucide:sliders-horizontal" width="14" class="shrink-0" />
+                  <span class="shrink-0">高级设置</span>
+                  <span class="num min-w-0 flex-1 truncate text-right text-[11px] font-semibold text-ink-mute">{{ advancedSummary }}</span>
+                  <Icon icon="lucide:chevron-down" width="14" class="shrink-0 transition group-open:rotate-180" />
+                </summary>
+                <div class="mt-3 space-y-4 pb-1">
+                  <div>
+                    <p class="label">尽量不排</p>
+                    <div class="flex gap-2">
+                      <button v-for="seg in SEGMENTS" :key="seg.key" type="button" class="chip" :class="prefs.avoid.includes(seg.key) && 'border-danger bg-danger-light text-danger'" @click="toggleIn(prefs.avoid, seg.key, prefs.segments)">{{ seg.label }}</button>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <label><span class="label">最早开始</span><input class="field" type="time" :value="prefs.earliest" @change="setPref('earliest', $event.target.value)" /></label>
+                    <label><span class="label">最晚结束</span><input class="field" type="time" :value="prefs.latest" @change="setPref('latest', $event.target.value)" /></label>
+                  </div>
+                  <div>
+                    <p class="label">每段学习时长</p>
+                    <div class="flex flex-wrap gap-2">
+                      <button v-for="b in BLOCKS" :key="b" type="button" class="chip num" :class="prefs.block_minutes === b && 'chip-active'" @click="setPref('block_minutes', b)">{{ b }} 分钟</button>
+                    </div>
+                  </div>
+                  <div>
+                    <p class="label">段间休息</p>
+                    <div class="flex gap-2">
+                      <button v-for="r in RESTS" :key="r" type="button" class="chip num" :class="prefs.rest_minutes === r && 'chip-active'" @click="setPref('rest_minutes', r)">{{ r }} 分钟</button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <label><span class="label">最早开始</span><input class="field" type="time" :value="prefs.earliest" @change="setPref('earliest', $event.target.value)" /></label>
-                <label><span class="label">最晚结束</span><input class="field" type="time" :value="prefs.latest" @change="setPref('latest', $event.target.value)" /></label>
-              </div>
-              <div>
-                <p class="label">每段学习时长</p>
-                <div class="flex flex-wrap gap-2">
-                  <button v-for="b in BLOCKS" :key="b" type="button" class="chip num" :class="prefs.block_minutes === b && 'chip-active'" @click="setPref('block_minutes', b)">{{ b }} 分钟</button>
-                </div>
-              </div>
-              <div>
-                <p class="label">段间休息</p>
-                <div class="flex gap-2">
-                  <button v-for="r in RESTS" :key="r" type="button" class="chip num" :class="prefs.rest_minutes === r && 'chip-active'" @click="setPref('rest_minutes', r)">{{ r }} 分钟</button>
-                </div>
-              </div>
+              </details>
             </div>
 
             <p class="mt-4 rounded-2xl bg-primary-light px-3 py-2 text-xs font-semibold text-primary">

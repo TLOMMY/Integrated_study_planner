@@ -3,7 +3,7 @@
 AI 扩展：每周 AI 复盘、PDF 讲义提取章节。（联网搜索只给智能体用，见 app/ai/search.py，没有对外接口）
 
   GET  /ai/review/weekly      某一周的学习统计 + AI 复盘与下周建议（结果缓存，refresh=1 重新生成）
-  POST /ai/materials/outline  上传 PDF 讲义，提取章节树并估算复习时长
+  POST /ai/materials/outline  上传讲义（PDF / PPT / Word / 文本），提取章节树并估算复习时长
 """
 
 from typing import Optional
@@ -32,8 +32,8 @@ def get_weekly_review(
     return ok(data, message)
 
 
-@router.post("/ai/materials/outline", summary="PDF 讲义提取章节：书签 + 正文标题，按字数估算复习时长")
-def materials_outline(user: CurrentUser, db: DB, file: UploadFile = File(..., description="PDF 讲义 / 课件")):
+@router.post("/ai/materials/outline", summary="讲义提取章节（PDF / PPT / Word / 文本）：自带结构 + 正文标题，按字数估算复习时长")
+def materials_outline(user: CurrentUser, db: DB, file: UploadFile = File(..., description="讲义 / 课件：.pdf / .pptx / .docx / .txt / .md")):
     content = file.file.read(settings.MAX_UPLOAD_BYTES + 1)
     if not content:
         raise ApiError(422, "文件为空")

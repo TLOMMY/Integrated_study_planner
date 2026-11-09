@@ -1,6 +1,6 @@
 <script setup>
 /**
- * PDF 讲义提取章节：上传 PDF → 显示章节树（页码、字数、预计复习时长）→ 勾选章节 →
+ * 讲义提取章节：上传 PDF / PPT（.pptx）/ Word（.docx）/ 文本（.txt、.md）→ 显示章节树（页码、字数、预计复习时长）→ 勾选章节 →
  * 点「让 AI 按这些章节排复习计划」时 emit('plan', text)，text 是整理好的一段中文需求，由父组件发给 AI。
  *
  * 用法：<MaterialOutline @plan="(text) => sendToAgent(text)" />
@@ -26,7 +26,13 @@ const outline = ref(null)
 const picked = reactive(new Set())
 const open = reactive(new Set())
 
-const SOURCE_LABELS = { outline: '来自 PDF 书签', headings: '识别正文标题', pages: '按页数分段' }
+const ACCEPT = '.pdf,.pptx,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown'
+const SUPPORTED = /\.(pdf|pptx|docx|txt|md|markdown)$/i
+// 文件自带的结构叫法随格式不同
+const OUTLINE_LABEL = { pdf: '来自 PDF 书签', pptx: '来自 PPT 分节', docx: '来自 Word 标题', text: '来自 Markdown 标题' }
+const sourceLabel = (o) => (o.source === 'outline' ? OUTLINE_LABEL[o.kind] || '来自文件目录' : o.source === 'headings' ? '识别正文标题' : `按${unit.value}数分段`)
+// 单位：PDF 页、PPT 张（幻灯片）、Word / 文本 段
+const unit = computed(() => outline.value?.unit || '页')
 
 const chapters = computed(() => outline.value?.chapters || [])
 const keyOf = (i, j = null) => (j === null ? `${i}` : `${i}-${j}`)
@@ -74,7 +80,7 @@ const selection = computed(() => {
 const selectedMinutes = computed(() => selection.value.reduce((sum, u) => sum + Number(u.est_minutes || 0), 0))
 const allSelected = computed(() => chapters.value.length > 0 && chapters.value.every((c, i) => chapterState(c, i) === 'all'))
 
-const pages = (range) => (range[0] === range[1] ? `第 ${range[0]} 页` : `第 ${range[0]}-${range[1]} 页`)
+const pages = (range) => (range[0] === range[1] ? `第 ${range[0]} ${unit.value}` : `第 ${range[0]}-${range[1]} ${unit.value}`)
 const words = (n) => (n >= 10000 ? `${(n / 10000).toFixed(1)} 万字` : `${n} 字`)
 
 const choose = () => input.value?.click()
@@ -84,8 +90,8 @@ const upload = async (event) => {
   event.target.value = ''
   if (!file) return
   error.value = ''
-  if (!/\.pdf$/i.test(file.name) && file.type !== 'application/pdf') {
-    error.value = '仅支持 PDF 文件'
+  if (!SUPPORTED.test(file.name) && file.type !== 'application/pdf') {
+    error.value = /\.(doc|ppt)$/i.test(file.name) ? '旧版 .doc / .ppt 请先另存为 .docx / .pptx' : '支持 PDF、PPT（.pptx）、Word（.docx）、txt / md'
     return
   }
   if (file.size > MAX_BYTES) {
@@ -143,14 +149,14 @@ defineExpose({ choose, reset })
       </span>
       <div class="min-w-0 flex-1">
         <h3 class="section-title">讲义提取章节</h3>
-        <p class="text-xs text-ink-mute">上传 PDF 讲义或课件，按章节估算复习时长</p>
+        <p class="text-xs text-ink-mute">上传讲义或课件（PDF / PPT / Word / 文本），按章节估算复习时长</p>
       </div>
       <button v-if="outline" type="button" class="chip" @click="choose">
         <Icon icon="lucide:refresh-cw" width="12" />换一份
       </button>
     </header>
 
-    <input ref="input" type="file" accept="application/pdf,.pdf" class="hidden" @change="upload" />
+    <input ref="input" type="file" :accept="ACCEPT" class="hidden" @change="upload" />
 
     <!-- 上传 -->
     <button
@@ -161,8 +167,8 @@ defineExpose({ choose, reset })
       @click="choose"
     >
       <Icon :icon="busy ? 'lucide:loader-circle' : 'lucide:file-up'" width="28" :class="busy ? 'animate-spin text-primary' : 'text-ink-mute'" />
-      <span class="text-sm font-bold text-ink">{{ busy ? '正在读取章节…' : '选择 PDF 讲义' }}</span>
-      <span class="text-xs text-ink-mute">{{ busy ? '有模型时会让 AI 整理成复习单元，稍等片刻' : '文字版 PDF，不超过 5MB' }}</span>
+      <span class="text-sm font-bold text-ink">{{ busy ? '正在读取章节…' : '选择讲义或课件' }}</span>
+      <span class="text-xs text-ink-mute">{{ busy ? '有模型时会让 AI 整理成复习单元，稍等片刻' : 'PDF / PPT / Word / txt / md，不超过 5MB' }}</span>
     </button>
 
     <p v-if="error" role="alert" class="mt-3 flex items-start gap-1.5 rounded-2xl bg-danger-light px-3 py-2.5 text-xs font-semibold text-danger">
@@ -176,8 +182,8 @@ defineExpose({ choose, reset })
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-bold text-ink" :title="outline.file_name">{{ outline.file_name }}</p>
           <p class="text-xs text-ink-mute">
-            {{ outline.pages }} 页 · {{ chapters.length }} 个章节 · 共约 {{ formatMinutes(outline.total_minutes) }}
-            · {{ outline.provider === 'llm' ? 'AI 已整理' : SOURCE_LABELS[outline.source] || '规则提取' }}
+            {{ outline.pages }} {{ unit }} · {{ chapters.length }} 个章节 · 共约 {{ formatMinutes(outline.total_minutes) }}
+            · {{ outline.provider === 'llm' ? 'AI 已整理' : sourceLabel(outline) }}
           </p>
         </div>
         <AiBadge v-if="outline.provider === 'llm'" :title="friendlyLabel(outline.model)" />

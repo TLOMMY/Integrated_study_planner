@@ -22,9 +22,16 @@ TRASH_DAYS = 30
 
 
 def visible_tasks(query):
-    """排除回收站里的计划下的任务（计划恢复后任务自动回来）。统计 / XP 等历史数据不受影响。"""
+    """
+    排除回收站里的计划下的任务（计划恢复后任务自动回来），以及已归档计划里未完成的任务
+    （归档 = 暂时搁置，不再出现在今天 / 即将 / 逾期里；已完成的照常留在历史中）。统计 / XP 等历史数据不受影响。
+    """
     deleted = select(StudyPlan.id).where(StudyPlan.deleted_at.isnot(None))
-    return query.filter(or_(StudyTask.plan_id.is_(None), StudyTask.plan_id.not_in(deleted)))
+    archived = select(StudyPlan.id).where(StudyPlan.status == "archived")
+    return query.filter(
+        or_(StudyTask.plan_id.is_(None), StudyTask.plan_id.not_in(deleted)),
+        or_(StudyTask.plan_id.is_(None), StudyTask.completed.is_(True), StudyTask.plan_id.not_in(archived)),
+    )
 REPEAT_LABELS = {"none": "不重复", "daily": "每天", "weekdays": "工作日", "weekly": "每周"}
 
 
@@ -350,7 +357,7 @@ def _check_plan_completion(db: Session, user: User, task: StudyTask) -> None:
 def task_counts(db: Session, user: User, ref: date) -> Dict[str, int]:
     key = ref.isoformat()
     rows = visible_tasks(db.query(StudyTask.due_date, StudyTask.completed).filter(StudyTask.user_id == user.id)).all()
-    counts = {"today": 0, "today_done": 0, "overdue": 0, "upcoming": 0, "completed": 0}
+    counts = {"today": 0, "today_done": 0, "overdue": 0, "upcoming": 0, "completed": 0, "future": 0, "inbox": 0}
     for due, done in rows:
         if done:
             counts["completed"] += 1
@@ -361,6 +368,7 @@ def task_counts(db: Session, user: User, ref: date) -> Dict[str, int]:
             counts["overdue"] += 1
         elif not done and (not due or due > key):
             counts["upcoming"] += 1
+            counts["future" if due else "inbox"] += 1
     return counts
 
 
@@ -395,6 +403,8 @@ def plan_to_dict(plan: StudyPlan, include_tasks: bool = False) -> dict:
     total = len(tasks)
     done = sum(1 for task in tasks if task.completed)
     today = timeutil.today()
+    # 不设日期范围的计划（长期路线、AI 建的无日期待办）：日期相关字段返回 null，不会"过期"
+    undated = not plan.start_date and not plan.end_date and not int(plan.duration_days or 0)
     start = timeutil.parse_date(plan.start_date) or (plan.created_at.date() if plan.created_at else today)
     end = timeutil.parse_date(plan.end_date) or start + timedelta(days=max(1, int(plan.duration_days or 7)) - 1)
     remaining = (end - today).days
@@ -406,11 +416,12 @@ def plan_to_dict(plan: StudyPlan, include_tasks: bool = False) -> dict:
         "status": plan.status or "active",
         "status_label": PLAN_STATUS_LABELS.get(plan.status or "active", "进行中"),
         "source": plan.source or "manual",
-        "start_date": start.isoformat(),
-        "end_date": end.isoformat(),
-        "duration_days": (end - start).days + 1,
-        "remaining_days": max(0, remaining),
-        "expired": remaining < 0 and plan.status == "active",
+        "undated": undated,
+        "start_date": None if undated else start.isoformat(),
+        "end_date": None if undated else end.isoformat(),
+        "duration_days": None if undated else (end - start).days + 1,
+        "remaining_days": None if undated else max(0, remaining),
+        "expired": not undated and remaining < 0 and plan.status == "active",
         "task_total": total,
         "task_done": done,
         "progress": round(done / total * 100) if total else 0,

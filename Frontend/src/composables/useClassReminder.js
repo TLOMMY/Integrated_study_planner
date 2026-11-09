@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import { isNativeApp } from '@/api/server'
 import { useHomeStore } from '@/stores/home'
 import { useUiStore } from '@/stores/ui'
+import { webNotify } from '@/utils/webNotify'
 
 const ENABLED_KEY = 'class-reminder-enabled'
 const LEAD_MINUTES = 10
@@ -39,14 +40,8 @@ export function useClassReminder() {
         sessionStorage.setItem(key, '1')
         const text = `${course.title} ${Math.ceil(minutes)} 分钟后开始${course.location ? ` · ${course.location}` : ''}`
         ui.toast(text, 'warning', 6000)
-        // 安卓 App 里课前提醒已由 useReminders 排进系统通知，这里只弹页面内提醒，避免重复
-        if (!isNativeApp() && 'Notification' in window && Notification.permission === 'granted') {
-          try {
-            new Notification('上课提醒', { body: text, tag: key })
-          } catch {
-            // 部分浏览器只允许 Service Worker 发通知
-          }
-        }
+        // 安卓 App 里课前提醒已由 useReminders 排进系统通知，webNotify 在 App 里会直接跳过，避免重复
+        webNotify('上课提醒', text, key)
       }
     }
   }

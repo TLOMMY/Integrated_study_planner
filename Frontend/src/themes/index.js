@@ -84,168 +84,193 @@ const lightness = (hex) => {
   return y > 216 / 24389 ? 116 * Math.cbrt(y) - 16 : (24389 / 27) * y
 }
 
-/* ------------------------------------------------------------------ 默认主题（与 v3 配色完全一致） */
+/* ------------------------------------------------------------------ 默认主题：莫兰迪 × 珊瑚 */
 
-const BASE = {
-  // 品牌主色：按钮、选中态、链接
-  primary: '#4F6EF7',
-  'primary-dark': '#3B57E0', // 主色按钮悬停
-  'primary-light': '#EEF1FE', // 选中 chip、浅色主色底
-  'primary-soft': '#C7D2FE', // 主色描边、未选中柱状图
-  // 页面底色 / 卡片底色
-  background: '#F5F7FB',
-  surface: '#FFFFFF',
-  // 文字与分隔线
-  ink: '#0F172A',
-  'ink-soft': '#475569',
-  'ink-mute': '#94A3B8',
-  'ink-line': '#E2E8F0',
-  // 语义色：primary 进行中 / 主操作；success 已完成；flame 被打断 / 超时 / 连续打卡；danger 删除
-  flame: '#FF8A00',
-  'flame-light': '#FFF4E5',
-  'flame-glow': '#FCD34D', // 成就徽章渐变的亮端（from-flame-glow to-flame）
-  xp: '#8B5CF6',
-  'xp-light': '#F3EEFF',
-  success: '#10B981',
-  'success-light': '#ECFDF5',
-  danger: '#EF4444',
-  'danger-light': '#FEF2F2',
-  'danger-soft': '#FEE2E2', // 危险按钮悬停
-  // "色块上的文字"：bg-primary 上用 text-on-primary，bg-success 上用 text-on-success……
-  // 亮色强调色（如夜读靛的亮青）上白字看不清，所以不能写死 text-white
-  'on-primary': '#FFFFFF',
-  'on-success': '#FFFFFF',
-  'on-flame': '#FFFFFF',
-  'on-danger': '#FFFFFF',
-  'on-xp': '#FFFFFF',
-  // 语义色当文字用时的颜色（text-primary / text-success……）。强调色本身对比度不够时，主题可单独压深
-  'primary-text': '#4F6EF7',
-  'success-text': '#10B981',
-  'flame-text': '#FF8A00',
-  'danger-text': '#EF4444',
-  // 反色块（Toast、专注小条、选中的周次）：底色与其上文字
-  inverse: '#0F172A',
-  'inverse-ink': '#FFFFFF',
-  'inverse-accent': '#C7D2FE', // 反色块上的主色图标
-  // 遮罩（弹窗背后的半透明层，使用时带透明度，如 bg-scrim/45）
-  scrim: '#0F172A',
-  // 首页概览卡、登录页渐变的中间色（from-primary via-hero to-xp）
-  hero: '#5B6CF9',
-  // 专注页沉浸式背景（深色渐变）与其上白色按钮的文字色
-  'deep-from': '#1E2A5E',
-  'deep-via': '#26357A',
-  'deep-to': '#3B2C7A',
-  'deep-ink': '#26357A',
-  // 专注页进度环渐变
-  'ring-start': '#9DB0FF',
-  'ring-end': '#FFB86B',
-  // 图表：坐标轴文字、网格线、淡色刻度、数值标签
-  'chart-axis': '#94A3B8',
-  'chart-grid': '#F1F5F9',
-  'chart-faint': '#CBD5E1',
-  'chart-label': '#64748B',
-  // 分类配色（饼图、彩纸等），依次取用
-  'chart-1': '#4F6EF7',
-  'chart-2': '#8B5CF6',
-  'chart-3': '#10B981',
-  'chart-4': '#FF8A00',
-  'chart-5': '#06B6D4',
-  'chart-6': '#94A3B8',
-  'chart-7': '#F43F5E',
-  // 窗口底色（平板"手机框"演示时手机外面的区域）与两处光晕
-  page: '#E8ECF6',
-  'page-glow-1': '#DFE6FF',
-  'page-glow-2': '#F3E8FF',
-  // 平板演示时的手机边框
-  'bezel-inner': '#0F172A',
-  'bezel-outer': '#334155',
-  // 骨架屏、滚动条
-  'skeleton-base': '#EEF1F6',
-  'skeleton-shine': '#F8FAFC',
-  scrollbar: '#CBD5E1',
-  // 增强对比度（系统 prefers-contrast: more 或设置页开关）时替换的次要文字与分隔线
-  'hc-ink-mute': '#475569',
-  'hc-ink-line': '#94A3B8',
-  // ---- 以下为原样输出的变量（不是 #RRGGBB）
-  // 阴影
-  'shadow-soft': '0 6px 24px -10px rgba(15, 23, 42, 0.18)',
-  'shadow-lift': '0 18px 40px -16px rgba(79, 110, 247, 0.45)',
-  'shadow-phone': '0 40px 80px -30px rgba(30, 41, 99, 0.45)',
-  // 内容层（bg-surface）的不透明度：普通主题为 1；玻璃主题按文档的"内容层标准材质"取值
-  'surface-alpha': '1',
-  // "显示边框"开关打开时的描边色
-  'outline-strong': 'rgba(15, 23, 42, 0.7)',
+/**
+ * 默认主题的色板（原型修改意见指定的数值，原样使用）。
+ * 珊瑚是唯一的强调色：任务块、主按钮、选中态。空闲蓝、课程沙色只用在日程时间轴；火苗、金徽只用于激励。
+ * 不用纯白：最亮的颜色是卡片色 #FBF9F4。
+ */
+const CORAL = {
+  // 强调色梯：浅底 → 描边 → 中 → 主色 → 按压
+  primary: '#D85A30',
+  'primary-dark': '#B54A28', // 按压、悬停
+  'primary-light': '#FAECE7', // 选中 chip、浅珊瑚底
+  'primary-soft': '#F5C4B3', // 完成的任务块、描边
+  'primary-mid': '#F0997B', // 珠点轴的任务段、优先级"中"
+  'primary-text': '#B54A28', // 珊瑚色的文字（#D85A30 在浅底上对比度不到 4.5）
+  // 底盘
+  background: '#F4F1EA',
+  surface: '#FBF9F4',
+  ink: '#2C2C2A',
+  'ink-soft': '#6B675E',
+  'ink-mute': '#6B675E',
+  'ink-line': '#E5E0D4',
+  bead: '#CFC9BA', // 时间轴珠点的中性色
+  // 空闲段（只在日程时间轴）
+  idle: '#DCE8F0',
+  'idle-bead': '#9CC3E8',
+  'idle-ink': '#4A7BA6',
+  link: '#185FA5',
+  // 课程块：日程页用中性沙色，课表页用下面的分科色
+  course: '#DCD9C8',
+  'course-line': '#B8B2A0',
+  'course-icon': '#8A867B',
+  // 激励：火苗是全 App 唯一允许渐变的地方（flame-glow → flame-deep），升级用金徽
+  flame: '#F2743F',
+  'flame-light': '#FAECE7',
+  'flame-glow': '#FF9D5C',
+  'flame-deep': '#E8542F',
+  gold: '#D9A441',
+  'gold-light': '#F7EBD3',
+  // 等级 / XP 的文字与小图标：用珊瑚深字，不另加紫色
+  xp: '#993C1D',
+  'xp-light': '#FAECE7',
+  // 功能色：完成绿只用在勾上，不铺块
+  success: '#6F9B4F',
+  'success-light': '#E8ECDF',
+  danger: '#C4554D',
+  'danger-light': '#F7E4E0',
+  'danger-soft': '#F0D3CD',
+  // 色块上的文字："on-primary" 用卡片色而不是纯白
+  'on-primary': '#FBF9F4',
+  'on-success': '#2C2C2A',
+  'on-flame': '#2C2C2A',
+  'on-danger': '#FBF9F4',
+  'on-xp': '#FBF9F4',
+  // 反色块（Toast、撤销条）：墨色底 + 底盘色字
+  inverse: '#2C2C2A',
+  'inverse-ink': '#F4F1EA',
+  'inverse-accent': '#F0997B',
+  scrim: '#2C2C2A',
+  hero: '#D85A30',
+  // 专注页：暖墨色底，三个停靠点几乎同色，看起来是一整块
+  'deep-from': '#2C2925',
+  'deep-via': '#2F2A26',
+  'deep-to': '#332B26',
+  'deep-ink': '#993C1D',
+  'ring-start': '#F5C4B3',
+  'ring-end': '#F2743F',
+  // 图表：珊瑚 / 空闲蓝 / 完成绿 / 金 / 课程沙 / 灰 / 逾期红
+  'chart-axis': '#6B675E',
+  'chart-grid': '#ECE8DF',
+  'chart-faint': '#CFC9BA',
+  'chart-label': '#6B675E',
+  'chart-1': '#D85A30',
+  'chart-2': '#4A7BA6',
+  'chart-3': '#6F9B4F',
+  'chart-4': '#D9A441',
+  'chart-5': '#9CC3E8',
+  'chart-6': '#B8B2A0',
+  'chart-7': '#C4554D',
+  page: '#ECE8DF',
+  'page-glow-1': '#F5E4DA',
+  'page-glow-2': '#E3E9EC',
+  'bezel-inner': '#2C2C2A',
+  'bezel-outer': '#6B675E',
+  'skeleton-base': '#ECE8DF',
+  'skeleton-shine': '#F7F4EE',
+  scrollbar: '#CFC9BA',
+  'hc-ink-mute': '#4A4741',
+  'hc-ink-line': '#B8B2A0',
 }
 
-/** 深色主题：相对 surface 的对比度 ink 13.6:1、ink-soft 8.1:1、ink-mute 4.6:1、主色 4.7:1（自检见 utils/themes.test.js）。 */
-const DARK = {
-  primary: '#6382FF',
-  'primary-dark': '#5272F5',
-  'primary-light': '#1C2748',
-  'primary-soft': '#3A4C8F',
-  background: '#0B1120',
-  surface: '#182133',
-  ink: '#E7ECF5',
-  'ink-soft': '#AEB8CA',
-  'ink-mute': '#7F8AA0',
-  'ink-line': '#2A3449',
-  flame: '#FF9A2E',
-  'flame-light': '#33230F',
-  xp: '#A48BFA',
-  'xp-light': '#251C45',
-  success: '#2DD4A0',
-  'success-light': '#0F2E27',
-  danger: '#F87171',
-  'danger-light': '#3A1619',
-  'danger-soft': '#4C1D22',
-  // 深色下强调色都较亮，色块上的文字用深色（白字只有 1.9–3.4:1）
-  'on-primary': '#0A1028',
-  'on-success': '#05261C',
-  'on-flame': '#2B1700',
-  'on-danger': '#2A0A0A',
-  'on-xp': '#1A1033',
-  'primary-text': '#6382FF',
-  'success-text': '#2DD4A0',
-  'flame-text': '#FF9A2E',
-  'danger-text': '#F87171',
-  inverse: '#334155',
-  'inverse-ink': '#F8FAFC',
-  'inverse-accent': '#A5B4FC',
+/**
+ * 课表页的分科色（只在课表页用；日程页课程块保持沙色，只加 6px 分科色点）。
+ * subj-*：块底色；subj-*-ink：教室文字、色点。课名一律用墨色。
+ */
+export const SUBJECTS = [
+  { key: 'sci', label: '理工', bg: '#D5E2EA', ink: '#5B84A8' },
+  { key: 'bio', label: '生化', bg: '#D8E0CE', ink: '#6E8B54' },
+  { key: 'his', label: '史地', bg: '#E6D9C3', ink: '#A0793F' },
+  { key: 'art', label: '文艺', bg: '#E3D3D3', ink: '#A56A6A' },
+  { key: 'soc', label: '社科', bg: '#DCD5E4', ink: '#7E6C9C' },
+  { key: 'def', label: '其他', bg: '#DCD9C8', ink: '#8A867B' },
+]
+const subjectVars = (map) => Object.fromEntries(SUBJECTS.flatMap((s) => {
+  const { bg, ink } = map(s)
+  return [[`subj-${s.key}`, bg], [`subj-${s.key}-ink`, ink]]
+}))
+const LIGHT_SUBJECTS = subjectVars((s) => ({ bg: s.bg, ink: s.ink }))
+
+/**
+ * 暖深色：深底上珊瑚提亮一档，不加块投影；分科色按"深底混一点科目色 + 提亮的科目字色"生成。
+ * 相对内容层的对比度：ink 14:1、ink-soft 8:1、ink-mute 5.6:1、珊瑚字 7:1（自检见 utils/themes.test.js）。
+ */
+const WARM_DARK = {
+  primary: '#E2714A',
+  'primary-dark': '#C85E3A',
+  'primary-light': '#3A2419',
+  'primary-soft': '#6B3522',
+  'primary-mid': '#B4573A',
+  'primary-text': '#F2B49A',
+  background: '#1C1A17',
+  surface: '#26231F',
+  ink: '#EEE9E1',
+  'ink-soft': '#C9C2B6',
+  'ink-mute': '#A39D91',
+  'ink-line': '#38342E',
+  bead: '#4E493F',
+  idle: '#1F2A33',
+  'idle-bead': '#4F7395',
+  'idle-ink': '#8DB4D6',
+  link: '#9CC3E8',
+  course: '#36322B',
+  'course-line': '#545046',
+  'course-icon': '#A39D91',
+  flame: '#F2743F',
+  'flame-light': '#3A2419',
+  'flame-glow': '#FF9D5C',
+  'flame-deep': '#E8542F',
+  gold: '#D9A441',
+  'gold-light': '#3A3120',
+  xp: '#F2B49A',
+  'xp-light': '#3A2419',
+  success: '#8DB46E',
+  'success-light': '#28301F',
+  danger: '#E07A70',
+  'danger-light': '#3A2220',
+  'danger-soft': '#4A2A27',
+  'on-primary': '#1C1A17',
+  'on-success': '#1C1A17',
+  'on-flame': '#1C1A17',
+  'on-danger': '#1C1A17',
+  'on-xp': '#1C1A17',
+  inverse: '#3D3832',
+  'inverse-ink': '#EEE9E1',
+  'inverse-accent': '#F0997B',
   scrim: '#000000',
-  hero: '#5868E8',
-  'deep-from': '#0E1430',
-  'deep-via': '#161F4A',
-  'deep-to': '#251B4F',
-  'deep-ink': '#1A2456',
-  'ring-start': '#9DB0FF',
-  'ring-end': '#FFB86B',
-  'chart-axis': '#7F8AA0',
-  'chart-grid': '#232C3F',
-  'chart-faint': '#59647A',
-  'chart-label': '#AEB8CA',
-  'chart-1': '#6382FF',
-  'chart-2': '#A48BFA',
-  'chart-3': '#2DD4A0',
-  'chart-4': '#FF9A2E',
-  'chart-5': '#22D3EE',
-  'chart-6': '#7F8AA0',
-  'chart-7': '#FB7185',
-  page: '#05080F',
-  'page-glow-1': '#151F45',
-  'page-glow-2': '#24163D',
+  hero: '#E2714A',
+  'deep-from': '#1A1815',
+  'deep-via': '#1C1916',
+  'deep-to': '#1F1B17',
+  'deep-ink': '#C85E3A',
+  'ring-start': '#B4573A',
+  'ring-end': '#F2743F',
+  'chart-axis': '#A39D91',
+  'chart-grid': '#312D28',
+  'chart-faint': '#4E493F',
+  'chart-label': '#C9C2B6',
+  'chart-1': '#E2714A',
+  'chart-2': '#8DB4D6',
+  'chart-3': '#8DB46E',
+  'chart-4': '#D9A441',
+  'chart-5': '#4F7395',
+  'chart-6': '#7A7468',
+  'chart-7': '#E07A70',
+  page: '#141210',
+  'page-glow-1': '#2E2018',
+  'page-glow-2': '#1A2128',
   'bezel-inner': '#000000',
-  'bezel-outer': '#2A3449',
-  'skeleton-base': '#1C2539',
-  'skeleton-shine': '#26304A',
-  scrollbar: '#3A455C',
-  'hc-ink-mute': '#AEB8CA',
-  'hc-ink-line': '#56627A',
-  // 深色下阴影几乎看不见，加一圈极淡的内描边让卡片、分段控件的选中块浮起来
-  'shadow-soft': '0 6px 24px -10px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.08)',
-  'shadow-lift': '0 18px 40px -16px rgba(99, 130, 255, 0.4)',
-  'shadow-phone': '0 40px 80px -30px rgba(0, 0, 0, 0.8)',
-  'outline-strong': 'rgba(231, 236, 245, 0.7)',
+  'bezel-outer': '#38342E',
+  'skeleton-base': '#2E2A25',
+  'skeleton-shine': '#38342E',
+  scrollbar: '#4E493F',
+  'hc-ink-mute': '#C9C2B6',
+  'hc-ink-line': '#6B655A',
 }
+const DARK_SUBJECTS = subjectVars((s) => ({ bg: mix('#26231F', s.ink, 0.22), ink: mix(s.ink, '#FFFFFF', 0.38) }))
+
 /* ------------------------------------------------------------------ Liquid Glass 主题 */
 
 /**
@@ -255,7 +280,9 @@ const DARK = {
  */
 function glassTheme(spec) {
   const { dark, accent, onAccent, ink, ink2Alpha, walls, bases, semantic, xp, content, glass, a11y } = spec
-  const paper = dark ? null : '#FFFFFF'
+  // 浅色内容层的底色：文档主题为白色；珊瑚主题不用纯白，用卡片色
+  const paper = dark ? null : spec.paper || '#FFFFFF'
+  const light = paper || '#FFFFFF'
   // 内容层的实际底色：内容层材质叠在每一处壁纸色上（用于对比度计算与实色派生）
   const contentOn = (wall) => (dark ? mix(wall, content.color, content.alpha) : mix(wall, paper, content.alpha))
   const surfaces = [...walls, ...bases].map(contentOn)
@@ -277,23 +304,39 @@ function glassTheme(spec) {
 
   // 语义色当文字用时，在内容层上也要 ≥ 4.5:1（强调色本身保持文档数值，只压深 / 提亮"文字版"）
   const textOf = (color) => ensure(color, fieldSurfaces, 4.5, ink)
-  const onOf = (color) => bestOn(color, dark ? [mix(color, '#000000', 0.82), ink] : ['#FFFFFF', ink])
-  const tint = (color, t) => (dark ? mix(surfaceSolid, color, t) : mix('#FFFFFF', color, t))
+  const onOf = (color) => bestOn(color, dark ? [mix(color, '#000000', 0.82), ink] : [light, ink])
+  const tint = (color, t) => (dark ? mix(surfaceSolid, color, t) : mix(light, color, t))
+  // 时间轴用的空闲色、课程沙色：每套主题有自己的空闲色相（spec.idle），课程沙色从底盘与文字色混出来
+  const idleHue = spec.idle || accent
+  const sand = dark ? mix(surfaceSolid, ink, 0.1) : mix(bases[0], ink, 0.12)
+  const subjects = subjectVars((s) => (dark ? { bg: mix(surfaceSolid, s.ink, 0.22), ink: mix(s.ink, '#FFFFFF', 0.38) } : { bg: s.bg, ink: s.ink }))
 
   return {
     primary: accent,
     'primary-dark': dark ? mix(accent, '#FFFFFF', 0.18) : mix(accent, ink, 0.16),
     'primary-light': tint(accent, dark ? 0.2 : 0.12),
     'primary-soft': tint(accent, dark ? 0.42 : 0.32),
+    'primary-mid': tint(accent, dark ? 0.62 : 0.6),
     background: field,
     surface: surfaceSolid,
     ink,
     'ink-soft': inkSoft,
     'ink-mute': inkMute,
     'ink-line': line,
+    bead: mix(surfaceSolid, ink, dark ? 0.26 : 0.22),
+    idle: tint(idleHue, dark ? 0.18 : 0.16),
+    'idle-bead': tint(idleHue, dark ? 0.5 : 0.45),
+    'idle-ink': textOf(idleHue),
+    link: textOf(idleHue),
+    course: sand,
+    'course-line': mix(sand, ink, dark ? 0.18 : 0.2),
+    'course-icon': inkMute,
     flame: semantic.flame,
     'flame-light': tint(semantic.flame, dark ? 0.2 : 0.14),
-    'flame-glow': mix(semantic.flame, dark ? ink : '#FFFFFF', 0.4),
+    'flame-glow': mix(semantic.flame, dark ? ink : light, 0.4),
+    'flame-deep': mix(semantic.flame, dark ? '#000000' : ink, 0.12),
+    gold: dark ? '#D9A441' : '#C9952F',
+    'gold-light': tint('#D9A441', dark ? 0.18 : 0.2),
     xp,
     'xp-light': tint(xp, dark ? 0.2 : 0.13),
     success: semantic.success,
@@ -311,8 +354,8 @@ function glassTheme(spec) {
     'flame-text': textOf(semantic.flame),
     'danger-text': textOf(semantic.danger),
     inverse: dark ? mix(content.color, '#FFFFFF', 0.16) : mix(ink, accent, 0.08),
-    'inverse-ink': dark ? ink : mix(bases[0], '#FFFFFF', 0.6),
-    'inverse-accent': dark ? accent : mix(accent, '#FFFFFF', 0.6),
+    'inverse-ink': dark ? ink : mix(bases[0], light, 0.6),
+    'inverse-accent': dark ? accent : mix(accent, light, 0.6),
     scrim: dark ? mix(bases[2], '#000000', 0.5) : ink,
     hero: mix(accent, xp, 0.5),
     // 专注页始终是深色沉浸背景：浅色主题从正文墨色出发，深色主题从壁纸最深的底色出发
@@ -320,8 +363,8 @@ function glassTheme(spec) {
     'deep-via': mix(dark ? bases[1] : ink, mix(accent, xp, 0.5), 0.28),
     'deep-to': mix(dark ? bases[0] : ink, xp, 0.32),
     'deep-ink': mix(dark ? bases[2] : ink, accent, 0.35),
-    'ring-start': mix(accent, '#FFFFFF', 0.45),
-    'ring-end': mix(semantic.flame, '#FFFFFF', 0.35),
+    'ring-start': mix(accent, light, 0.45),
+    'ring-end': mix(semantic.flame, light, 0.35),
     'chart-axis': inkMute,
     'chart-grid': mix(surfaceSolid, ink, 0.07),
     'chart-faint': mix(surfaceSolid, ink, 0.3),
@@ -343,6 +386,7 @@ function glassTheme(spec) {
     'hc-ink-line': mix(surfaceSolid, ink, 0.45),
     'shadow-soft': `0 8px 24px -12px ${rgba(ink, dark ? 0.7 : 0.22)}`,
     'shadow-lift': `0 16px 36px -16px ${rgba(accent, dark ? 0.5 : 0.5)}`,
+    ...subjects,
     // ---- 原样输出：壁纸、玻璃、内容层、无障碍三态
     wallpaper: [
       ...spec.wallLayers.map((l, i) => `radial-gradient(${l} ${walls[i]} 0%, transparent ${spec.wallStops[i]})`),
@@ -379,6 +423,7 @@ const GLASS_SPECS = {
     baseMid: '46%',
     semantic: { success: '#34C759', flame: '#E8833A', danger: '#D93A3A' },
     xp: '#6E5BC4', // 等级 / XP：取壁纸紫的低饱和深色，避免第二个高饱和强调色
+    idle: '#2E8F86', // 时间轴空闲段：主色是蓝，空闲改用青绿，两者分得开
     content: { alpha: 0.66, filter: 'blur(32px) saturate(150%)' },
     glass: {
       fill: 'rgba(255, 255, 255, 0.16)',
@@ -402,6 +447,7 @@ const GLASS_SPECS = {
     baseMid: '48%',
     semantic: { success: '#2E9E5B', flame: '#C97A32', danger: '#C4342E' },
     xp: '#4F6A8C', // 低饱和石板蓝，不另加鲜艳色
+    idle: '#4F6A8C', // 主色是松青，空闲用石板蓝
     content: { alpha: 0.68, filter: 'blur(30px)' },
     glass: {
       fill: 'rgba(255, 255, 255, 0.18)',
@@ -428,6 +474,7 @@ const GLASS_SPECS = {
     baseMid: '46%',
     semantic: { success: '#3DDC84', flame: '#FFA24C', danger: '#FF6B6B' },
     xp: '#B9A6F2', // 提亮、降饱和的淡紫
+    idle: '#7C95C9', // 主色是亮青，空闲用灰蓝
     content: { color: '#1E182C', alpha: 0.42, filter: 'blur(28px)' },
     glass: {
       fill: 'rgba(255, 255, 255, 0.09)',
@@ -451,6 +498,7 @@ const GLASS_SPECS = {
     baseMid: '46%',
     semantic: { success: '#5C7A3E', flame: '#B98A2E', danger: '#A3302A' },
     xp: '#7A5A44', // 暖棕：禁止冷色或紫蓝强调
+    idle: '#5E7F8C', // 主色是赤陶，空闲用灰蓝（与默认主题的空闲蓝同一思路）
     content: { alpha: 0.7, filter: 'blur(26px)' },
     glass: {
       fill: 'rgba(255, 255, 255, 0.14)',
@@ -461,12 +509,89 @@ const GLASS_SPECS = {
     },
     a11y: { reduceFill: 'rgba(251, 246, 240, 0.94)', contrastStroke: 'rgba(42, 29, 22, 0.55)', contrastFill: 'rgba(255, 255, 255, 0.42)', outline: 'rgba(42, 29, 22, 0.7)' },
   },
+  /**
+   * 默认主题（莫兰迪 × 珊瑚）的玻璃参数。色板见上面的 CORAL，这里只给壁纸与材质：
+   * 壁纸是几乎平的暖沙底 + 三块很淡的色斑（珊瑚 / 空闲蓝 / 沙），只给玻璃一点可折射的层次，不算大面积渐变；
+   * 玻璃的高光、描边用卡片色 #FBF9F4（不用纯白），描边另加一道沙色细线，避免在浅底上看不出边。
+   */
+  coral: {
+    dark: false,
+    paper: '#FBF9F4',
+    accent: '#D85A30',
+    onAccent: '#FBF9F4',
+    ink: '#2C2C2A',
+    ink2Alpha: 0.62,
+    walls: ['#F6E3D9', '#E1EAEF', '#EDE6D7', '#F2E7DE'],
+    bases: ['#F4F1EA', '#F2EEE6', '#EFEBE2'],
+    wallLayers: ['120% 70% at 4% 0%,', '90% 60% at 100% 34%,', '110% 70% at 0% 100%,', '100% 70% at 96% 96%,'],
+    wallStops: ['58%', '60%', '62%', '60%'],
+    baseMid: '50%',
+    semantic: { success: '#6F9B4F', flame: '#F2743F', danger: '#C4554D' },
+    xp: '#993C1D',
+    idle: '#4A7BA6',
+    content: { alpha: 0.78, filter: 'blur(28px) saturate(140%)' },
+    glass: {
+      fill: 'rgba(251, 249, 244, 0.52)',
+      stroke: 'rgba(184, 178, 160, 0.42)',
+      filter: 'blur(24px) saturate(165%) brightness(1.03)',
+      shadow: 'inset 0 1px 0 rgba(251,249,244,.95), inset 0 -1px 0 rgba(251,249,244,.4), inset 0 0 20px rgba(251,249,244,.32), 0 10px 26px -14px rgba(44,44,42,.26), 0 2px 6px -3px rgba(44,44,42,.14)',
+      sheen: 'radial-gradient(125% 95% at 16% -12%, rgba(251,249,244,.85), transparent 58%)',
+    },
+    a11y: { reduceFill: 'rgba(251, 249, 244, 0.96)', contrastStroke: 'rgba(44, 44, 42, 0.55)', contrastFill: 'rgba(251, 249, 244, 0.8)', outline: 'rgba(44, 44, 42, 0.7)' },
+  },
+  /** 暖深色：同一套布局与分族关系，深底玻璃。 */
+  'warm-dark': {
+    dark: true,
+    accent: '#E2714A',
+    onAccent: '#1C1A17',
+    ink: '#EEE9E1',
+    ink2Alpha: 0.72,
+    walls: ['#33241C', '#1D262E', '#2B2620', '#2A221D'],
+    bases: ['#1C1A17', '#1A1815', '#171512'],
+    wallLayers: ['120% 70% at 4% 0%,', '90% 60% at 100% 34%,', '110% 70% at 0% 100%,', '100% 70% at 96% 96%,'],
+    wallStops: ['58%', '60%', '62%', '60%'],
+    baseMid: '50%',
+    semantic: { success: '#8DB46E', flame: '#F2743F', danger: '#E07A70' },
+    xp: '#F2B49A',
+    idle: '#8DB4D6',
+    content: { color: '#26231F', alpha: 0.8, filter: 'blur(26px)' },
+    glass: {
+      fill: 'rgba(38, 35, 31, 0.5)',
+      stroke: 'rgba(238, 233, 225, 0.14)',
+      filter: 'blur(24px) saturate(140%) brightness(1.02)',
+      shadow: 'inset 0 1px 0 rgba(238,233,225,.16), inset 0 -1px 0 rgba(238,233,225,.06), 0 12px 30px -14px rgba(0,0,0,.7)',
+      sheen: 'radial-gradient(125% 95% at 16% -12%, rgba(238,233,225,.12), transparent 58%)',
+    },
+    a11y: { reduceFill: 'rgba(38, 35, 31, 0.96)', contrastStroke: 'rgba(238, 233, 225, 0.6)', contrastFill: 'rgba(38, 35, 31, 0.9)', outline: 'rgba(238, 233, 225, 0.75)' },
+  },
+}
+
+/**
+ * 默认主题、深色主题的完整变量表：玻璃材质由 glassTheme() 按上面的参数生成，色板用 CORAL / WARM_DARK 的指定值覆盖。
+ * BASE 也是其他主题缺省变量的来源。
+ */
+const BASE = {
+  ...glassTheme(GLASS_SPECS.coral),
+  ...CORAL,
+  ...LIGHT_SUBJECTS,
+  'shadow-soft': '0 1px 2px rgba(44, 44, 42, 0.06), 0 8px 24px -14px rgba(44, 44, 42, 0.18)',
+  'shadow-lift': '0 2px 6px rgba(216, 90, 48, 0.22), 0 12px 28px -16px rgba(216, 90, 48, 0.4)',
+  'shadow-phone': '0 40px 80px -30px rgba(44, 44, 42, 0.45)',
+}
+const DARK = {
+  ...glassTheme(GLASS_SPECS['warm-dark']),
+  ...WARM_DARK,
+  ...DARK_SUBJECTS,
+  // 深底上不加块投影，只留一圈极淡的内描边
+  'shadow-soft': '0 6px 24px -12px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(238, 233, 225, 0.06)',
+  'shadow-lift': '0 0 #0000',
+  'shadow-phone': '0 40px 80px -30px rgba(0, 0, 0, 0.8)',
 }
 /* ------------------------------------------------------------------ 注册表 */
 
 export const THEMES = [
-  { id: 'default', name: '默认', description: '清爽的蓝紫配色', dark: false, preview: ['#4F6EF7', '#F5F7FB', '#8B5CF6'], vars: BASE },
-  { id: 'dark', name: '深色', description: '夜间护眼，低亮度', dark: true, preview: ['#6382FF', '#0B1120', '#A48BFA'], vars: DARK },
+  { id: 'default', name: '默认', description: '暖白 · 珊瑚 · 玻璃质感', dark: false, glass: true, preview: ['#D85A30', '#F4F1EA', '#9CC3E8'], vars: BASE },
+  { id: 'dark', name: '深色', description: '暖调深底 · 夜间护眼', dark: true, glass: true, preview: ['#E2714A', '#1C1A17', '#8DB4D6'], vars: DARK },
   { id: 'apricot-dawn', name: '晨光杏桃', description: '暖色晨光 · 玻璃质感', dark: false, glass: true, preview: ['#0471DE', '#FFF4E3', '#FFB0C4'], vars: glassTheme(GLASS_SPECS['apricot-dawn']) },
   { id: 'mist-pine', name: '雾松青', description: '低饱和 · 长时间不累眼', dark: false, glass: true, preview: ['#0F766E', '#F2FAF6', '#CFE8EC'], vars: glassTheme(GLASS_SPECS['mist-pine']) },
   { id: 'night-indigo', name: '夜读靛', description: '深色玻璃 · 夜间阅读', dark: true, glass: true, preview: ['#64D2FF', '#1B1630', '#7A2F52'], vars: glassTheme(GLASS_SPECS['night-indigo']) },
@@ -523,14 +648,15 @@ export const wallpaperStats = (id) => {
   }
 }
 
-/** 测试与报告用：每套主题的关键对比度。 */
+/** 测试与报告用：每套主题的关键对比度。id 可以是主题 id（default / dark 对应 coral / warm-dark 的玻璃参数）。 */
+const SPEC_OF = { default: 'coral', dark: 'warm-dark' }
 export const contrastReport = (id) => {
   const theme = getTheme(id)
   const v = resolveVars(theme)
-  const spec = GLASS_SPECS[id]
+  const spec = GLASS_SPECS[SPEC_OF[id] || id]
   // 正文所在的实际底色：玻璃主题为"内容层叠在每一处壁纸色上"，普通主题为 surface 与 background
   const grounds = spec
-    ? [...spec.walls, ...spec.bases].map((w) => mix(w, spec.dark ? spec.content.color : '#FFFFFF', spec.content.alpha)).concat(v.background)
+    ? [...spec.walls, ...spec.bases].map((w) => mix(w, spec.dark ? spec.content.color : spec.paper || '#FFFFFF', spec.content.alpha)).concat(v.background)
     : [v.surface, v.background]
   return {
     onPrimary: contrast(v['on-primary'], v.primary),

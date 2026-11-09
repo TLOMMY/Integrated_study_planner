@@ -4,13 +4,14 @@ import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import ExamImport from './ExamImport.vue'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
 import { aiRoute, examDaysText } from './examAi'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
-  // 打开时直接编辑某场考试（或传 'new' 新建）
+  // 打开时直接编辑某场考试（传 'new' 新建，'import' 导入考试安排）
   initial: { type: [Object, String], default: null },
 })
 const emit = defineEmits(['close'])
@@ -18,11 +19,11 @@ const router = useRouter()
 const timetable = useTimetableStore()
 const ui = useUiStore()
 
-const view = ref('list') // list | edit
+const view = ref('list') // list | edit | import
 const editingId = ref(null)
 const saving = ref(false)
 const showPast = ref(false)
-const form = reactive({ title: '', subject: '', exam_date: '', start_time: '', location: '', note: '' })
+const form = reactive({ title: '', subject: '', exam_date: '', start_time: '', end_time: '', location: '', note: '' })
 
 const startEdit = (exam = null) => {
   editingId.value = exam?.id || null
@@ -31,6 +32,7 @@ const startEdit = (exam = null) => {
     subject: exam?.subject || '',
     exam_date: exam?.exam_date || dayjs().add(7, 'day').format('YYYY-MM-DD'),
     start_time: exam?.start_time || '',
+    end_time: exam?.end_time || '',
     location: exam?.location || '',
     note: exam?.note || '',
   })
@@ -44,6 +46,7 @@ watch(
     view.value = 'list'
     timetable.loadExams().catch((e) => ui.fail(e, '考试加载失败'))
     if (props.initial === 'new') startEdit()
+    else if (props.initial === 'import') view.value = 'import'
     else if (props.initial && typeof props.initial === 'object') startEdit(props.initial)
   },
 )
@@ -51,6 +54,7 @@ watch(
 const submit = async () => {
   if (!form.title.trim()) return ui.toast('请填写考试名称', 'warning')
   if (!form.exam_date) return ui.toast('请选择考试日期', 'warning')
+  if (form.end_time && form.start_time && form.end_time <= form.start_time) return ui.toast('结束时间要晚于开始时间', 'warning')
   saving.value = true
   try {
     await timetable.saveExam({ ...form, title: form.title.trim() }, editingId.value)
@@ -73,10 +77,34 @@ const askAi = (exam) => {
 </script>
 
 <template>
-  <BottomSheet :open="open" :title="view === 'edit' ? (editingId ? '编辑考试' : '添加考试') : '考试倒计时'" :subtitle="view === 'list' ? '3 天内的考试会标红提醒' : ''" @close="emit('close')">
+  <BottomSheet
+    :open="open"
+    :title="{ edit: editingId ? '编辑考试' : '添加考试', import: '导入考试安排' }[view] || '考试倒计时'"
+    :subtitle="{ list: '3 天内的考试会标红提醒', import: '从教务系统、通知或截图里一次导入整学期的考试' }[view] || ''"
+    @close="emit('close')"
+  >
+    <template v-if="view === 'import'">
+      <button class="-mt-1 mb-2 flex items-center gap-0.5 text-xs font-bold text-ink-mute" type="button" @click="view = 'list'">
+        <Icon icon="lucide:chevron-left" width="14" />考试列表
+      </button>
+      <ExamImport @done="view = 'list'" />
+    </template>
+
     <!-- 列表 -->
-    <div v-if="view === 'list'" class="space-y-2">
-      <p v-if="!timetable.exams.length" class="rounded-3xl bg-background px-4 py-6 text-center text-sm text-ink-mute">还没有即将到来的考试</p>
+    <div v-else-if="view === 'list'" class="space-y-2">
+      <button
+        v-if="!timetable.exams.length"
+        class="flex w-full items-center gap-3 rounded-[22px] border border-dashed border-primary-mid bg-primary-light/60 px-4 py-4 text-left"
+        type="button"
+        @click="view = 'import'"
+      >
+        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary"><Icon icon="lucide:file-down" width="19" /></span>
+        <span class="min-w-0 flex-1">
+          <b class="block text-sm font-black text-ink">还没有考试 · 导入考试安排</b>
+          <small class="block text-xs text-ink-soft">粘贴教务通知、上传表格或截图，一次加好整学期</small>
+        </span>
+        <Icon icon="lucide:chevron-right" width="18" class="text-primary" />
+      </button>
       <article
         v-for="exam in timetable.exams"
         :key="exam.id"
@@ -93,11 +121,11 @@ const askAi = (exam) => {
           </div>
           <button class="min-w-0 flex-1 text-left" type="button" @click="startEdit(exam)">
             <p class="truncate text-sm font-black text-ink">{{ exam.title }}</p>
-            <p class="num mt-0.5 text-xs text-ink-soft">{{ dayjs(exam.exam_date).format('M月D日') }} {{ exam.weekday }}<template v-if="exam.start_time"> · {{ exam.start_time }}</template></p>
+            <p class="num mt-0.5 text-xs text-ink-soft">{{ dayjs(exam.exam_date).format('M月D日') }} {{ exam.weekday }}<template v-if="exam.start_time"> · {{ exam.start_time }}<template v-if="exam.end_time">-{{ exam.end_time }}</template></template></p>
             <p v-if="exam.location || exam.subject" class="mt-0.5 truncate text-[11px] text-ink-mute">{{ [exam.subject, exam.location].filter(Boolean).join(' · ') }}</p>
           </button>
         </div>
-        <button class="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-xp-light py-2 text-xs font-bold text-xp" type="button" @click="askAi(exam)">
+        <button class="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-2xl bg-primary-light py-2 text-xs font-bold text-primary" type="button" @click="askAi(exam)">
           <Icon icon="lucide:sparkles" width="14" />让 AI 排复习计划
         </button>
       </article>
@@ -122,14 +150,18 @@ const askAi = (exam) => {
         <span class="label">考试名称</span>
         <input v-model="form.title" class="field" maxlength="100" placeholder="如 高等数学期末" />
       </label>
+      <label class="block">
+        <span class="label">日期</span>
+        <input v-model="form.exam_date" type="date" class="field" />
+      </label>
       <div class="grid grid-cols-2 gap-3">
-        <label class="block">
-          <span class="label">日期</span>
-          <input v-model="form.exam_date" type="date" class="field" />
-        </label>
         <label class="block">
           <span class="label">开始时间（可选）</span>
           <input v-model="form.start_time" type="time" class="field" />
+        </label>
+        <label class="block">
+          <span class="label">结束时间（可选）</span>
+          <input v-model="form.end_time" type="time" class="field" />
         </label>
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -149,8 +181,11 @@ const askAi = (exam) => {
       </label>
     </form>
 
-    <template #footer>
-      <button v-if="view === 'list'" class="btn-primary w-full" type="button" @click="startEdit()"><Icon icon="lucide:plus" width="16" />添加考试</button>
+    <template v-if="view !== 'import'" #footer>
+      <div v-if="view === 'list'" class="grid grid-cols-[auto_1fr] gap-2.5">
+        <button class="btn-ghost" type="button" @click="view = 'import'"><Icon icon="lucide:file-down" width="16" />导入</button>
+        <button class="btn-primary" type="button" @click="startEdit()"><Icon icon="lucide:plus" width="16" />添加考试</button>
+      </div>
       <div v-else class="grid gap-3" :class="editingId ? 'grid-cols-3' : 'grid-cols-2'">
         <button v-if="editingId" class="btn-danger" type="button" @click="remove({ id: editingId, title: form.title })"><Icon icon="lucide:trash-2" width="16" />删除</button>
         <button class="btn-ghost" type="button" @click="view = 'list'">返回</button>
