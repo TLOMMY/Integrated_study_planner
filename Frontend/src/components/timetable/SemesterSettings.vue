@@ -85,14 +85,15 @@ const submit = async () => {
         <p class="mt-2 text-xs text-ink-soft">开学日期：<b class="num">{{ form.semester_start }}</b>（第 1 周周一）</p>
       </div>
 
+      <!-- iOS Safari 的日期框自带最小宽度和更高的行高：两格都定高、min-w-0，避免挤出格子盖住旁边 -->
       <div class="grid grid-cols-2 gap-3">
-        <label class="block">
+        <label class="block min-w-0">
           <span class="label">开学日期</span>
-          <input v-model="form.semester_start" type="date" class="field" />
+          <input v-model="form.semester_start" type="date" class="field block h-12 w-full min-w-0 appearance-none py-0 text-left leading-[3rem]" />
         </label>
-        <label class="block">
+        <label class="block min-w-0">
           <span class="label">学期总周数</span>
-          <input v-model.number="form.total_weeks" type="number" min="1" max="30" class="field" />
+          <input v-model.number="form.total_weeks" type="number" min="1" max="30" inputmode="numeric" class="field block h-12 w-full min-w-0 py-0" />
         </label>
       </div>
 

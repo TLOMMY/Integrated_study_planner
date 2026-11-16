@@ -125,8 +125,19 @@ def import_timetable_ai(
     provider_id: Optional[str] = Form(default=None, description="模型配置 id、env（服务器 DeepSeek）；不传则用当前启用的模型"),
 ):
     from app.ai import vision
+    from app.services.importer import parse_pdf_table
 
     content = _read_upload(file)
+    # 文字版 PDF（教务系统导出 / 打印成 PDF）：先按表格线本地还原网格，和 Excel 一样解析，准确也不占 AI 次数
+    if content[:5] == b"%PDF-":
+        local = parse_pdf_table(content, user)
+        if local is not None:
+            data = import_common.build_preview(
+                db, user, file_name=file.filename or None, fmt=local.format, courses=local.courses, skipped=local.skipped,
+                semester=local.semester, semester_start=local.semester_start, total_weeks=local.total_weeks,
+                source="pdf-table",
+            )
+            return ok(data, f"从 PDF 表格直接读出 {data['success_count']} 门课程，请核对后导入")
     config = _ai_config(db, user, provider_id)
     # 没有明确选自己的模型时，所选模型不能看图就交给服务器的视觉模型（豆包）；明确选了自己的模型就只用它
     fallback = providers.vision_env_config(user) if (provider_id or "").strip() in ("", "auto", "active", "env") else None

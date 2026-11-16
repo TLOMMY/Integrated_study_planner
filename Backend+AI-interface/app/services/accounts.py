@@ -12,6 +12,7 @@ from app.core import timeutil
 from app.core.config import settings
 from app.core.errors import ApiError
 from app.models import EmailCode, User
+from app.services.gamification import avatar_url
 
 
 def user_to_dict(user: User) -> dict:
@@ -22,6 +23,8 @@ def user_to_dict(user: User) -> dict:
         "full_name": user.full_name or "",
         "display_name": user.full_name or user.username.split("@")[0],
         "avatar": user.avatar or "🦉",
+        # 自定义头像的地址（相对接口根路径）；没有时为空，前端显示 emoji
+        "avatar_url": avatar_url(user),
         "daily_goal_minutes": int(user.daily_goal_minutes or 60),
         "semester": user.semester,
         "semester_start": user.semester_start,

@@ -3,6 +3,7 @@ import { reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { useHomeStore } from '@/stores/home'
@@ -33,6 +34,47 @@ const save = async (payload, message = '已保存') => {
     await auth.updateProfile(payload)
     useHomeStore().refresh()
     ui.success(message)
+    sheet.value = ''
+  } catch (error) {
+    ui.fail(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+// ---------------------------------------------------------------- 自定义头像（上传图片）
+const avatarInput = ref(null)
+const uploading = ref(false)
+const AVATAR_MAX = 5 * 1024 * 1024
+const pickAvatar = () => {
+  if (auth.isDemo) return ui.toast('演示账号不能上传头像，注册自己的账号后再试', 'info')
+  avatarInput.value?.click()
+}
+const onAvatarFile = async (event) => {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return ui.toast('头像只支持 png / jpg / webp 图片', 'warning')
+  if (file.size > AVATAR_MAX) return ui.toast('图片不能超过 5MB', 'warning')
+  uploading.value = true
+  try {
+    await auth.uploadAvatar(file)
+    ui.success('头像已更新')
+    sheet.value = ''
+  } catch (error) {
+    ui.fail(error)
+  } finally {
+    uploading.value = false
+  }
+}
+const useEmoji = async (emoji) => {
+  saving.value = true
+  try {
+    // 选 emoji 时同时去掉自定义图片，否则图片会继续盖住 emoji
+    if (auth.user?.avatar_url) await auth.deleteAvatar()
+    if (emoji && emoji !== auth.user?.avatar) await auth.updateProfile({ avatar: emoji })
+    useHomeStore().refresh()
+    ui.success('头像已更新')
     sheet.value = ''
   } catch (error) {
     ui.fail(error)
@@ -73,7 +115,7 @@ const logout = async () => {
       <button class="icon-btn lg:invisible" type="button" aria-label="返回" @click="router.back()"><Icon icon="lucide:chevron-left" width="20" /></button>
       <div class="mt-2 flex flex-col items-center text-center">
         <button class="relative flex h-24 w-24 items-center justify-center rounded-full bg-surface text-5xl shadow-soft" type="button" aria-label="更换头像" @click="sheet = 'avatar'">
-          {{ auth.user?.avatar }}
+          <UserAvatar :user="auth.user" class="h-full w-full rounded-full" />
           <span class="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-on-primary ring-4 ring-primary-light"><Icon icon="lucide:pencil" width="13" /></span>
         </button>
         <button class="mt-3 flex items-center gap-1 text-xl font-black text-ink" type="button" @click="sheet = 'name'">
@@ -136,9 +178,34 @@ const logout = async () => {
       <p class="pb-2 text-center text-[10px] text-ink-mute">学业管家 v3.0 · 课表 × 任务 × 番茄钟 × 成长激励</p>
     </div>
 
-    <BottomSheet :open="sheet === 'avatar'" title="选择头像" @close="sheet = ''">
+    <BottomSheet :open="sheet === 'avatar'" title="更换头像" @close="sheet = ''">
+      <input ref="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="onAvatarFile" />
+      <!-- 上传图片：服务器裁成正方形保存 -->
+      <button
+        class="mb-3 flex w-full items-center gap-3 rounded-[20px] border border-dashed border-ink-line bg-background px-4 py-3 text-left transition hover:border-primary-mid disabled:opacity-50"
+        type="button"
+        :disabled="uploading"
+        @click="pickAvatar"
+      >
+        <span v-if="auth.user?.avatar_url" class="h-11 w-11 shrink-0 overflow-hidden rounded-full ring-2 ring-primary"><UserAvatar :user="auth.user" class="h-full w-full" /></span>
+        <span v-else class="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary"><Icon :icon="uploading ? 'lucide:loader-circle' : 'lucide:image-up'" width="20" :class="uploading && 'animate-spin'" /></span>
+        <span class="min-w-0 flex-1">
+          <b class="block text-sm font-black text-ink">{{ uploading ? '正在上传…' : auth.user?.avatar_url ? '换一张图片' : '上传图片' }}</b>
+          <small class="block text-xs text-ink-mute">png / jpg / webp，5MB 以内，会裁成正方形</small>
+        </span>
+        <Icon icon="lucide:chevron-right" width="18" class="text-ink-mute" />
+      </button>
+      <p class="mb-2 px-1 text-xs font-bold text-ink-mute">{{ auth.user?.avatar_url ? '或改用 emoji（会移除图片）' : '或选一个 emoji' }}</p>
       <div class="grid grid-cols-6 gap-2 pb-2">
-        <button v-for="a in AVATARS" :key="a" type="button" class="flex aspect-square items-center justify-center rounded-2xl text-3xl transition" :class="auth.user?.avatar === a ? 'bg-primary-light ring-2 ring-primary' : 'bg-background'" @click="save({ avatar: a }, '头像已更新')">
+        <button
+          v-for="a in AVATARS"
+          :key="a"
+          type="button"
+          class="flex aspect-square items-center justify-center rounded-2xl text-3xl transition disabled:opacity-50"
+          :class="!auth.user?.avatar_url && auth.user?.avatar === a ? 'bg-primary-light ring-2 ring-primary' : 'bg-background'"
+          :disabled="saving || uploading"
+          @click="useEmoji(a)"
+        >
           {{ a }}
         </button>
       </div>

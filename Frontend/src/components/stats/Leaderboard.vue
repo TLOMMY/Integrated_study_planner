@@ -1,5 +1,6 @@
 <script setup>
 import { Icon } from '@iconify/vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 
 defineProps({
   board: { type: Object, required: true },
@@ -20,7 +21,7 @@ const MEDALS = ['bg-amber-400', 'bg-slate-400', 'bg-orange-400']
         <span class="num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-black" :class="entry.rank <= 3 ? [MEDALS[entry.rank - 1], 'text-white'] : 'text-ink-mute'">
           {{ entry.rank }}
         </span>
-        <span class="text-xl">{{ entry.avatar }}</span>
+        <UserAvatar :user="entry" class="h-7 w-7 shrink-0 rounded-full text-xl" />
         <span class="min-w-0 flex-1 truncate text-sm font-bold" :class="entry.is_me ? 'text-primary' : 'text-ink'">
           {{ entry.is_me ? '我' : entry.name }}
           <span v-if="entry.is_demo" class="ml-1 rounded bg-ink-line px-1 text-[9px] font-semibold text-ink-mute">演示</span>
@@ -31,7 +32,7 @@ const MEDALS = ['bg-amber-400', 'bg-slate-400', 'bg-orange-400']
     <!-- 排名在展示范围之外时，单独补一行"我" -->
     <div v-if="board.me?.xp && board.me.rank > limit" class="mt-1.5 flex items-center gap-3 rounded-2xl bg-primary-light px-3 py-2 ring-1 ring-primary/30">
       <span class="num flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-black text-ink-mute">{{ board.me.rank }}</span>
-      <span class="text-xl">{{ board.me.avatar }}</span>
+      <UserAvatar :user="board.me" class="h-7 w-7 shrink-0 rounded-full text-xl" />
       <span class="min-w-0 flex-1 truncate text-sm font-bold text-primary">我</span>
       <span class="num flex items-center gap-0.5 text-sm font-black text-xp"><Icon icon="lucide:sparkles" width="12" />{{ board.me.xp }}</span>
     </div>

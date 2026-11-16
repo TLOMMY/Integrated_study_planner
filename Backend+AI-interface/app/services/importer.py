@@ -14,8 +14,6 @@
 见 parse_blocks / group_lines；教务网页导入（import_web）也复用这一套。
 """
 
-import csv
-import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,35 +52,10 @@ def _cell_text(value) -> str:
 
 
 def _read_rows(filename: str, content: bytes) -> List[List[str]]:
-    suffix = Path(filename or "").suffix.lower()
-    if suffix not in SUPPORTED_SUFFIXES:
-        raise ApiError(415, "暂只支持 .xls / .xlsx / .csv 课表文件（可从教务系统导出 Excel）")
-    try:
-        if suffix == ".xls":
-            import xlrd
+    """读成二维文字表；日期 / 时间单元格按类型换成文字，见 services/sheet_reader.py。"""
+    from app.services.sheet_reader import read_sheet
 
-            book = xlrd.open_workbook(file_contents=content)
-            sheet = book.sheet_by_index(0)
-            return [[_cell_text(sheet.cell_value(r, c)) for c in range(sheet.ncols)] for r in range(sheet.nrows)]
-        if suffix == ".xlsx":
-            from openpyxl import load_workbook
-
-            book = load_workbook(io.BytesIO(content), read_only=True, data_only=True)
-            sheet = book.worksheets[0]
-            return [[_cell_text(v) for v in row] for row in sheet.iter_rows(values_only=True)]
-        for encoding in ("utf-8-sig", "gbk"):
-            try:
-                text = content.decode(encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-        else:
-            raise ApiError(422, "CSV 文件编码无法识别，请另存为 UTF-8")
-        return [[_cell_text(v) for v in row] for row in csv.reader(io.StringIO(text))]
-    except ApiError:
-        raise
-    except Exception as error:  # noqa: BLE001 - 第三方解析库异常类型各异
-        raise ApiError(422, f"文件无法解析，请确认是教务系统导出的原始课表（{type(error).__name__}）")
+    return read_sheet(filename, content).rows
 
 
 # ---------------------------------------------------------------- 元信息
@@ -468,6 +441,43 @@ def _parse_flat(rows: List[List[str]], user, result: ParseResult) -> bool:
             }
         )
     return True
+
+
+# ---------------------------------------------------------------- 文字版 PDF：按表格线还原行列，再走与 Excel 相同的网格解析
+def _pdf_table_rows(content: bytes, max_pages: int = 4) -> List[List[str]]:
+    """用 pdfplumber 按表格线切出单元格；合并单元格只有左上角有字（其余为 None），与 Excel 的读法一致。
+    没有表格线（纯文字排版）或读不出时返回空列表。"""
+    try:
+        import pdfplumber
+    except ImportError:  # 依赖没装时退回模型识别
+        return []
+    import io
+
+    rows: List[List[str]] = []
+    try:
+        with pdfplumber.open(io.BytesIO(content)) as pdf:
+            for page in pdf.pages[:max_pages]:
+                for table in page.extract_tables() or []:
+                    for row in table:
+                        rows.append([(cell or "").replace("\r\n", "\n").replace("\r", "\n").strip() for cell in row])
+    except Exception:  # noqa: BLE001 - pdfminer 对个别 PDF 会抛各种异常，这里只是加速路径，失败就交给模型
+        return []
+    return rows
+
+
+def parse_pdf_table(content: bytes, user) -> Optional[ParseResult]:
+    """文字版 PDF 课表（教务系统导出 / 打印成 PDF）：能还原出"星期一…星期日"表头的网格就本地解析，不调用模型。
+    还原不出来（扫描件、没有表格线）或一门课都没解析出来时返回 None，由调用方交给模型。"""
+    rows = _pdf_table_rows(content)
+    if not rows:
+        return None
+    result = ParseResult(format="pdf-table")
+    _detect_meta(rows, result)
+    header_index, day_columns = _find_day_header(rows, max_rows=12)
+    if header_index is None:
+        return None
+    _parse_grid(rows, header_index, day_columns, result, result.total_weeks or int(user.total_weeks or 20))
+    return result if result.courses else None
 
 
 # ---------------------------------------------------------------- 入口

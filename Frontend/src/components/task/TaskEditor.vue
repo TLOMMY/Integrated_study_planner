@@ -29,6 +29,8 @@ import {
   remindOptions,
 } from './extras'
 
+import { EXAMPLES, parseTaskLine } from '@/utils/quickLine'
+
 const props = defineProps({
   open: { type: Boolean, default: false },
   task: { type: Object, default: null },
@@ -76,6 +78,24 @@ const dateChips = computed(() => {
   ]
 })
 
+// ---------------------------------------------------------------- 新建：一行快速输入，其余收进"更多设置"
+// 识别结果实时写回表单，展开"更多设置"后看到的就是识别出来的值
+const quickLine = ref('')
+const more = ref(false)
+const quick = computed(() => (quickLine.value.trim() ? parseTaskLine(quickLine.value) : null))
+watch(quick, (result) => {
+  if (!result?.ok || isEdit.value) return
+  const d = result.data
+  Object.assign(form, { title: d.title, due_date: d.due_date, start_time: d.start_time || '', duration_minutes: d.duration_minutes, priority: d.priority, repeat_rule: d.repeat_rule })
+  if (!remindTouched.value) applyDefaultRemind()
+})
+const quickSubmit = () => {
+  if (isEdit.value || more.value) return submit()
+  if (!quickLine.value.trim()) return ui.toast(`写一句就能添加，例如：${EXAMPLES.task}`, 'info', 3200)
+  if (!quick.value.ok) return ui.toast(quick.value.error, 'warning', 3600)
+  submit()
+}
+
 const reset = () => {
   const source = { due_date: todayStr(), duration_minutes: 30, priority: 0, repeat_rule: 'none', ...props.defaults, ...(props.task || {}) }
   Object.assign(form, {
@@ -102,6 +122,9 @@ const reset = () => {
   stepInput.value = ''
   linkDraft.url = ''
   linkDraft.title = ''
+  quickLine.value = ''
+  // 从空闲段 / 日程带了时间进来时直接展开，看得到带进来的日期和时间
+  more.value = isEdit.value || Boolean(props.defaults?.start_time)
 }
 
 // ---------------------------------------------------------------- 提醒
@@ -280,7 +303,37 @@ const startFocus = () => {
 
 <template>
   <BottomSheet :open="open" :title="isEdit ? '编辑任务' : '新建任务'" @close="emit('close')">
-    <form class="space-y-4" @submit.prevent="submit">
+    <form class="space-y-4" @submit.prevent="quickSubmit">
+      <!-- 新建：一行写完，空格分开，顺序随意 -->
+      <div v-if="!isEdit && !more" class="space-y-2">
+        <div class="flex items-center gap-2">
+          <input
+     v-model="quickLine"
+     class="field min-w-0 flex-1 text-base font-semibold"
+     :placeholder="`如：${EXAMPLES.task}`"
+     maxlength="200"
+            autofocus
+     enterkeyhint="done"
+     aria-label="一句话添加任务"
+   />
+   <MicButton v-model="quickLine" :maxlength="200" />
+ </div>
+        <p class="px-1 text-[11px] leading-5 text-ink-mute">名称 + 日期 + 时长 + 优先级，用空格分开；只写名称就是今天、30 分钟。提醒、重复默认不设。</p>
+        <div v-if="quick" class="flex min-h-[28px] flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+   <template v-if="quick.ok">
+     <span class="max-w-full truncate rounded-full bg-primary-light px-2.5 py-1 text-xs font-bold text-primary">{{ quick.data.title }}</span>
+     <span v-for="t in quick.tokens" :key="t.text" class="inline-flex items-center gap-1 rounded-full bg-background px-2.5 py-1 text-xs font-semibold text-ink-soft">
+       <Icon :icon="t.icon" width="12" />{{ t.text }}
+            </span>
+          </template>
+          <span v-else class="flex items-center gap-1 text-xs font-semibold text-danger"><Icon icon="lucide:circle-alert" width="13" />{{ quick.error }}</span>
+        </div>
+        <button class="flex items-center gap-1 px-1 text-xs font-bold text-link" type="button" @click="more = true">
+          <Icon icon="lucide:sliders-horizontal" width="13" />更多设置（时间、提醒、重复、子任务、标签…）
+        </button>
+      </div>
+
+      <template v-else>
       <div class="flex items-center gap-2">
         <input v-model="form.title" class="field min-w-0 flex-1 text-base font-semibold" placeholder="准备做什么？" maxlength="200" autofocus />
         <MicButton v-model="form.title" :maxlength="200" />
@@ -517,6 +570,7 @@ const startFocus = () => {
       <div v-if="isEdit && task.focus_minutes" class="flex items-center gap-2 rounded-2xl bg-flame-light px-4 py-3 text-xs font-bold text-flame">
         <Icon icon="lucide:timer" width="16" /> 已专注 {{ task.focus_minutes }} 分钟 · {{ task.pomodoros }} 个完整番茄
       </div>
+      </template>
     </form>
 
     <template #footer>
@@ -527,7 +581,7 @@ const startFocus = () => {
         <button v-if="isEdit && !task.completed" class="btn-ghost" type="button" @click="startFocus">
           <Icon icon="lucide:play" width="16" />专注
         </button>
-        <button class="btn-primary flex-1" type="button" :disabled="saving" @click="submit">
+        <button class="btn-primary flex-1" type="button" :disabled="saving" @click="quickSubmit">
           {{ saving ? '保存中…' : isEdit ? '保存修改' : '添加任务' }}
         </button>
       </div>

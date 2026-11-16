@@ -37,7 +37,7 @@ def _resolve_sqlite_url(url: str) -> str:
 
 class Settings:
     APP_NAME = "智能学习规划系统"
-    APP_VERSION = "1.2.0"
+    APP_VERSION = "1.3.0"
 
     DATABASE_URL: str = _resolve_sqlite_url(_env("DATABASE_URL", default="sqlite:///./study_planner.db"))
 

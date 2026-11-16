@@ -188,7 +188,7 @@ onActivated(() => {
         <button v-if="timetable.exams.length" class="chip shrink-0 py-1" type="button" aria-label="让 AI 排复习计划" @click="router.push(aiRoute(timetable.exams[0]))">
           <Icon icon="lucide:sparkles" width="13" class="text-xp" />AI 排复习
         </button>
-        <button class="chip shrink-0 py-1" type="button" @click="openExams(timetable.exams.length ? null : 'new')">
+        <button class="chip shrink-0 py-1" type="button" @click="openExams()">
           <Icon :icon="timetable.exams.length ? 'lucide:calendar-clock' : 'lucide:plus'" width="13" />{{ timetable.exams.length ? '全部考试' : '添加考试倒计时' }}
         </button>
       </div>

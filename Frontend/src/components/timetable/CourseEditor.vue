@@ -1,9 +1,11 @@
 <script setup>
 import { computed, reactive, ref, watch } from 'vue'
+import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
 import { SUBJECTS, subjectBg, subjectInk, subjectOf } from '@/utils/subjects'
+import { EXAMPLES, parseCourseLine } from '@/utils/quickLine'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -41,6 +43,8 @@ const MODES = [
 const total = computed(() => timetable.meta?.total_weeks || 20)
 const periodCount = computed(() => timetable.meta?.period_times.length || 12)
 const form = reactive({})
+const quickLine = ref('')
+const more = ref(false)
 
 const detectMode = (weeks) => {
   if (!weeks?.length) return { mode: 'all', from: 1, to: total.value }
@@ -64,7 +68,7 @@ watch(
       teacher: c?.teacher || '',
       day_of_week: c?.day_of_week || p.day_of_week || 1,
       start_period: c?.start_period || p.start_period || 1,
-      end_period: c?.end_period || Math.min((p.start_period || 1) + 1, periodCount.value),
+      end_period: c?.end_period || p.end_period || Math.min((p.start_period || 1) + 1, periodCount.value),
       mode: range.mode,
       from: range.from,
       to: range.to,
@@ -73,8 +77,38 @@ watch(
       subject: pickedSubject(c),
       note: c?.note || '',
     })
+    quickLine.value = ''
+    more.value = Boolean(c)
   },
 )
+
+// ---------------------------------------------------------------- 新建：一行快速输入，其余收进"更多设置"
+// 从课表格子进来时星期、节次已经带好，只写"课程名 教室"就行
+const fromCell = computed(() => Boolean(props.preset?.day_of_week && props.preset?.start_period))
+const quickPlaceholder = computed(() => (fromCell.value ? '如：离散数学 A1205 1-16周' : `如：${EXAMPLES.course}`))
+const quick = computed(() =>
+  quickLine.value.trim()
+    ? parseCourseLine(quickLine.value, { at: fromCell.value ? props.preset : null, periods: periodCount.value, total: total.value })
+    : null,
+)
+watch(quick, (result) => {
+  if (!result?.ok || props.course) return
+  const d = result.data
+  const range = detectMode(d.weeks)
+  Object.assign(form, { course_name: d.course_name, classroom: d.classroom, day_of_week: d.day_of_week, start_period: d.start_period, end_period: d.end_period, mode: range.mode, from: range.from, to: range.to, custom: new Set(d.weeks) })
+})
+const presetText = computed(() => {
+  const p = props.preset
+  if (!fromCell.value) return ''
+  const end = p.end_period || p.start_period
+  return `周${DAYS[p.day_of_week - 1]} ${p.start_period === end ? `第${p.start_period}节` : `${p.start_period}-${end}节`}`
+})
+const quickSubmit = () => {
+  if (props.course || more.value) return submit()
+  if (!quickLine.value.trim()) return ui.toast(`写一句就能添加，例如：${quickPlaceholder.value.replace('如：', '')}`, 'info', 3200)
+  if (!quick.value.ok) return ui.toast(quick.value.error, 'warning', 3600)
+  submit()
+}
 
 const weeks = computed(() => {
   if (form.mode === 'custom') return [...form.custom].sort((a, b) => a - b)
@@ -127,7 +161,29 @@ const submit = async () => {
 
 <template>
   <BottomSheet :open="open" :title="course ? '编辑课程' : '添加课程'" @close="emit('close')">
-    <form class="space-y-4" @submit.prevent="submit">
+    <form class="space-y-4" @submit.prevent="quickSubmit">
+      <!-- 新建：一行写完 -->
+      <div v-if="!course && !more" class="space-y-2">
+ <p v-if="presetText" class="flex items-center gap-1.5 px-1 text-xs font-bold text-primary"><Icon icon="lucide:calendar-days" width="14" />{{ presetText }}</p>
+ <input v-model="quickLine" class="field text-base font-semibold" :placeholder="quickPlaceholder" maxlength="200" autofocus enterkeyhint="done" aria-label="一句话添加课程" />
+ <p class="px-1 text-[11px] leading-5 text-ink-mute">
+   {{ fromCell ? '课程名 + 教室 + 上课周数，用空格分开；不写周数就是整学期。' : '课程名 + 教室 + 周几第几节 + 上课周数，用空格分开；不写周数就是整学期。' }}
+        </p>
+        <div v-if="quick" class="flex min-h-[28px] flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+   <template v-if="quick.ok">
+     <span class="max-w-full truncate rounded-full bg-primary-light px-2.5 py-1 text-xs font-bold text-primary">{{ quick.data.course_name }}</span>
+            <span v-for="t in quick.tokens" :key="t.text" class="inline-flex items-center gap-1 rounded-full bg-background px-2.5 py-1 text-xs font-semibold text-ink-soft">
+       <Icon :icon="t.icon" width="12" />{{ t.text }}
+     </span>
+          </template>
+   <span v-else class="flex items-center gap-1 text-xs font-semibold text-danger"><Icon icon="lucide:circle-alert" width="13" />{{ quick.error }}</span>
+        </div>
+        <button class="flex items-center gap-1 px-1 text-xs font-bold text-link" type="button" @click="more = true">
+          <Icon icon="lucide:sliders-horizontal" width="13" />更多设置（教师、单双周、分科颜色、备注…）
+        </button>
+      </div>
+
+      <template v-else>
       <input v-model="form.course_name" class="field text-base font-semibold" placeholder="课程名称" maxlength="160" />
       <div class="grid grid-cols-2 gap-3">
         <input v-model="form.classroom" class="field" placeholder="教室" maxlength="80" />
@@ -219,9 +275,10 @@ const submit = async () => {
       </div>
 
       <input v-model="form.note" class="field" placeholder="备注（如：带实验报告）" maxlength="200" />
+      </template>
     </form>
     <template #footer>
-      <button class="btn-primary w-full" type="button" :disabled="saving" @click="submit">{{ saving ? '保存中…' : '保存课程' }}</button>
+      <button class="btn-primary w-full" type="button" :disabled="saving" @click="quickSubmit">{{ saving ? '保存中…' : course ? '保存课程' : '添加课程' }}</button>
     </template>
   </BottomSheet>
 </template>

@@ -8,6 +8,11 @@
  *   · 空闲段不画框，只有一行"空闲 · 点按安排"。
  *   · ghosts：一键排今天的建议块（浅珊瑚底 + 描边），点 × / 圈切换是否加入；picking：空闲段快建时的预览块。
  * 块之间至少留 8px：短事件的圆徽章比按比例算出来的高时，后面的内容整体顺延，时刻跟着一起移动，顺序不会乱。
+ *
+ * 电脑端（lg）换成列表：左边时刻、中间同一根珠点轴（每行一个节点）、右边是占满宽度的课程 / 任务卡片，文字写在卡片里；
+ * 不按时间比例，卡片高度跟内容走（与 1.1 一致）。拖动任务卡改时间：每 12px 一刻钟。
+ * 电脑端还能接收右栏拖进来的"没有日期的待办"（dataTransfer 里是 application/x-xyg-task）：放到空闲行从空闲开始，
+ * 放到课程 / 任务上从它结束时开始（不和它重叠），放到"现在"从下一个整刻钟开始，发出 drop-task { taskId, start_time }。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import dayjs from 'dayjs'
@@ -24,7 +29,7 @@ const props = defineProps({
   picking: { type: Object, default: null },
 })
 // reschedule：电脑端拖动任务块改开始时间，{ task, start_time, conflict }
-const emit = defineEmits(['toggle', 'open', 'plan-free', 'reschedule', 'ghost'])
+const emit = defineEmits(['toggle', 'open', 'plan-free', 'reschedule', 'ghost', 'drop-task'])
 const isDesktop = useDesktop()
 
 const PX = 0.8
@@ -33,6 +38,7 @@ const DOT = 32 // 圆徽章直径
 const GAP = 8 // 块之间的最小间隔
 const AXIS = 68 // 轴中心离左边的距离
 const SNAP = 15
+const STEP_PX = 12 // 电脑端列表拖动：每 12px 移动一刻钟
 const KIND_ICON = { exam: 'lucide:alarm-clock', review: 'lucide:notebook-pen', task: 'lucide:book-open' }
 
 const toMin = (hm) => {
@@ -225,8 +231,9 @@ const onPointerMove = (event) => {
   const dy = event.clientY - d.startY
   if (!d.moved && Math.abs(dy) < 6) return
   d.moved = true
-  // 按比例换算成分钟，吸附到整 15 分钟；限制在当天内（不跨午夜）
-  const target = Math.round((d.origin + dy / PX) / SNAP) * SNAP
+  // 手机按比例换算成分钟，电脑列表每 12px 一刻钟；吸附到整 15 分钟，限制在当天内（不跨午夜）
+  const minutes = isDesktop.value ? (dy / STEP_PX) * SNAP : dy / PX
+  const target = Math.round((d.origin + minutes) / SNAP) * SNAP
   d.start = Math.min(Math.max(0, target), 24 * 60 - d.duration)
 }
 const preview = computed(() => {
@@ -237,7 +244,7 @@ const preview = computed(() => {
 })
 const clashIds = computed(() => new Set((preview.value?.clashes || []).map((c) => c.id)))
 const dragging = (block) => drag.value?.moved && drag.value.item.id === block.item.id
-const dragDy = computed(() => (drag.value?.moved ? (drag.value.start - drag.value.origin) * PX : 0))
+const dragDy = computed(() => (drag.value?.moved ? (drag.value.start - drag.value.origin) * (isDesktop.value ? STEP_PX / SNAP : PX) : 0))
 const dragStyle = (block) => (dragging(block) ? { transform: `translateY(${dragDy.value}px)` } : {})
 // 文字、完成圈跟着块一起移动（它们本身用 -50% 垂直居中，内联 transform 会覆盖掉，所以写在一起）
 const rowStyle = (block) => ({ top: `${block.center}px`, ...(dragging(block) ? { transform: `translateY(calc(-50% + ${dragDy.value}px))` } : {}) })
@@ -265,6 +272,52 @@ const onKey = (event) => {
 onBeforeUnmount(cleanup)
 
 const openTask = (task) => !suppressClick && emit('open', task)
+
+// ---------------------------------------------------------------- 电脑端列表
+/** 课程、任务、空闲、建议块、快建预览按时间排成一列；今天插入"现在"。每行带上它下面那段珠点轴的颜色。 */
+const rows = computed(() => {
+  const list = layout.value.blocks.map((b) => ({ ...b, rowKey: b.key }))
+  for (const f of frees.value) if (!f.covered) list.push({ kind: 'free', rowKey: f.item.id, s: f.s, e: f.e, item: f.item })
+  list.sort((a, b) => a.s - b.s || (a.kind === 'free' ? 1 : -1))
+  if (isToday.value) {
+    const index = list.findIndex((r) => r.s > nowMin.value)
+    list.splice(index === -1 ? list.length : index, 0, { kind: 'now', rowKey: 'now', s: nowMin.value })
+  }
+  let color = BEAD.none
+  return list.map((row, i) => {
+    if (row.kind === 'free') color = BEAD.idle
+    else if (row.kind !== 'now') color = beadOf(row)
+    return { ...row, bead: color, last: i === list.length - 1 }
+  })
+})
+// 右栏拖进来的无日期任务：悬停的行高亮，放下时排进当天（见文件头说明）
+const TASK_MIME = 'application/x-xyg-task'
+const dropOver = ref(null)
+const canDropOn = (row) => row.kind === 'free' || row.kind === 'task' || row.kind === 'course' || row.kind === 'now'
+const dropStart = (row) => {
+  if (row.kind === 'now') return toHm(Math.ceil(nowMin.value / SNAP) * SNAP)
+  return row.kind === 'free' ? row.item.start_time : row.item.end_time
+}
+const onDragOver = (event, row) => {
+  if (!canDropOn(row) || !event.dataTransfer?.types?.includes(TASK_MIME)) return
+  event.preventDefault()
+  event.dataTransfer.dropEffect = 'move'
+  dropOver.value = row.rowKey
+}
+const onDragLeave = (row) => dropOver.value === row.rowKey && (dropOver.value = null)
+const onDrop = (event, row) => {
+  const id = Number(event.dataTransfer?.getData(TASK_MIME))
+  dropOver.value = null
+  if (!id || !canDropOn(row)) return
+  event.preventDefault()
+  emit('drop-task', { taskId: id, start_time: dropStart(row), free: row.kind === 'free' ? row.item : null })
+}
+const beadStyle = (color) => ({ backgroundImage: `radial-gradient(circle, ${color} 1.75px, transparent 2.1px)` })
+const cardClass = (row) => {
+  if (row.kind === 'course') return ['border-[1.5px] border-course-line bg-course text-ink', courseStatus(row.item) === 'done' && 'opacity-60']
+  if (row.kind === 'task') return row.item.task.completed ? 'bg-primary-soft/60 text-ink-mute' : 'bg-primary text-on-primary shadow-lift'
+  return blockClass(row)
+}
 const pick = (block) => {
   if (block.kind === 'task') openTask(block.item.task)
   else if (block.kind === 'ghost') emit('ghost', block.item)
@@ -276,7 +329,110 @@ const pick = (block) => {
     <p v-if="isDesktop && day.items.some((i) => i.type === 'task' && !i.task.completed)" class="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-mute">
       <Icon icon="lucide:move-vertical" width="13" />上下拖动任务块可调整开始时间（按 15 分钟对齐，Esc 取消）
     </p>
-    <div class="relative" :class="drag?.moved && 'cursor-grabbing select-none'" :style="{ height: `${layout.height}px` }">
+    <!-- 电脑端：列表 + 珠点轴 + 宽卡片 -->
+    <ol v-if="isDesktop" class="relative" :class="drag?.moved && 'cursor-grabbing select-none'">
+      <li
+        v-for="row in rows"
+        :key="row.rowKey"
+        class="relative grid grid-cols-[48px_32px_minmax(0,1fr)] gap-x-3 rounded-2xl pb-2.5 transition-colors"
+        :class="dropOver === row.rowKey && 'bg-idle/60 ring-2 ring-link/40'"
+        @dragover="onDragOver($event, row)"
+        @dragleave="onDragLeave(row)"
+        @drop="onDrop($event, row)"
+      >
+        <span class="num text-right text-[11px] leading-none" :class="row.kind === 'now' ? 'pt-0.5 font-bold text-primary' : 'pt-3 font-semibold text-ink-mute'">
+          {{ row.kind === 'now' ? toHm(nowMin) : row.item.start_time }}
+        </span>
+        <span class="relative flex justify-center" aria-hidden="true">
+          <span v-if="!row.last" class="absolute -bottom-0 left-1/2 top-0 w-2 -translate-x-1/2 bg-[length:8px_8px] bg-repeat-y" :style="beadStyle(row.bead)" />
+          <span v-if="row.kind === 'now'" class="relative mt-px h-3 w-3 rounded-full bg-primary shadow-[0_0_0_3px_rgb(var(--c-background))]" />
+          <span v-else-if="row.kind === 'free'" class="relative mt-2.5 h-2.5 w-2.5 rounded-full bg-idle-bead shadow-[0_0_0_3px_rgb(var(--c-background))]" />
+          <span
+            v-else
+            class="relative mt-1.5 flex h-8 w-8 items-center justify-center rounded-full shadow-[0_0_0_3px_rgb(var(--c-background))]"
+            :class="blockClass(row)"
+          >
+            <Icon :icon="blockIcon(row)" width="15" />
+          </span>
+        </span>
+
+        <span v-if="row.kind === 'now'" class="pt-0.5 text-[11px] font-bold leading-none text-primary">现在</span>
+
+        <button v-else-if="row.kind === 'free'" class="py-1.5 text-left text-[13px] text-idle-ink" type="button" :data-free="row.item.start_time" @click="emit('plan-free', row.item)">
+          空闲 {{ compactMinutes(row.item.minutes) }}<span class="num text-ink-mute">（{{ row.item.start_time }}-{{ row.item.end_time }}）</span> · <span class="font-bold text-link">点按安排</span>
+        </button>
+
+        <div v-else-if="row.kind === 'course'" class="rounded-2xl px-4 py-3" :class="[cardClass(row), clashIds.has(row.item.id) && 'ring-4 ring-danger/40']">
+          <div class="flex items-center gap-2">
+            <i class="h-1.5 w-1.5 shrink-0 rounded-full" :style="{ background: subjectInk(subjectOf(row.item)) }" />
+            <b class="min-w-0 flex-1 truncate text-[15px] font-bold">{{ row.item.title }}</b>
+            <span v-if="courseStatus(row.item) === 'ongoing'" class="shrink-0 rounded-full bg-primary-light px-2 py-0.5 text-[10px] font-bold text-primary">正在上</span>
+            <span v-else-if="courseStatus(row.item) === 'done' && isToday" class="shrink-0 text-[10px] font-bold text-ink-mute">已结束</span>
+          </div>
+          <p class="num mt-1 truncate text-xs text-ink-soft">{{ courseSub(row.item) }}</p>
+        </div>
+
+        <div
+          v-else-if="row.kind === 'task'"
+          class="relative flex items-center gap-3 rounded-2xl px-4 py-3 transition-shadow"
+          :class="[cardClass(row), canDrag(row) && 'cursor-grab', dragging(row) && 'z-10 ring-4 ring-primary/25', clashIds.has(row.item.id) && 'ring-4 ring-danger/40']"
+          :style="dragging(row) ? { transform: `translateY(${dragDy}px)` } : undefined"
+          @pointerdown="onPointerDown($event, row)"
+        >
+          <button class="min-w-0 flex-1 text-left" type="button" @click="openTask(row.item.task)">
+            <b class="block truncate text-[15px] font-bold" :class="row.item.task.completed && 'line-through'">{{ row.item.title }}</b>
+            <small class="num mt-0.5 block truncate text-xs" :class="row.item.task.completed ? 'text-ink-mute' : 'opacity-90'">{{ taskSub(row) }}</small>
+          </button>
+          <button
+            data-no-drag
+            class="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-full border-[1.5px]"
+            :class="row.item.task.completed ? 'border-bead text-ink-mute' : 'border-on-primary/80 hover:bg-on-primary/15'"
+            type="button"
+            :aria-label="row.item.task.completed ? '标记未完成' : '完成'"
+            @click="emit('toggle', row.item.task)"
+          >
+            <Icon v-if="row.item.task.completed" icon="lucide:check" width="14" />
+          </button>
+          <div
+            v-if="dragging(row) && preview"
+            class="pointer-events-none absolute -top-9 left-2 z-20 flex items-center gap-1.5 whitespace-nowrap rounded-xl px-2.5 py-1.5 text-xs font-black shadow-xl"
+            :class="preview.clashes.length ? 'bg-danger text-on-danger' : 'bg-inverse text-inverse-ink'"
+            role="status"
+          >
+            <Icon :icon="preview.clashes.length ? 'lucide:triangle-alert' : 'lucide:clock'" width="13" />
+            <span class="num">{{ preview.start }}-{{ preview.end }}</span>
+            <span v-if="preview.clashes.length" class="font-semibold">与「{{ preview.clashes[0].title }}」冲突，仍可放下</span>
+            <span v-else-if="!preview.changed" class="font-semibold opacity-70">未改动</span>
+          </div>
+        </div>
+
+        <button
+          v-else-if="row.kind === 'ghost'"
+          class="flex items-center gap-2.5 rounded-2xl px-4 py-3 text-left"
+          :class="cardClass(row)"
+          type="button"
+          role="checkbox"
+          :aria-checked="row.item.picked"
+          :aria-label="`${row.item.picked ? '去掉' : '加入'}：${row.item.title}`"
+          @click="emit('ghost', row.item)"
+        >
+          <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full" :class="row.item.picked ? 'bg-primary text-on-primary' : 'border-[1.5px] border-bead'">
+            <Icon v-if="row.item.picked" icon="lucide:check" width="12" />
+          </span>
+          <span class="min-w-0 flex-1">
+            <b class="block truncate text-sm font-bold" :class="row.item.picked ? 'text-ink' : 'text-ink-mute'">{{ row.item.title }}</b>
+            <small class="num block truncate text-xs text-ink-mute">{{ row.item.start_time }}-{{ row.item.end_time }} · {{ compactMinutes(row.item.minutes) }} · {{ row.item.reason }}</small>
+          </span>
+        </button>
+
+        <div v-else class="flex items-center gap-2 rounded-2xl px-4 py-3" :class="cardClass(row)">
+          <b class="min-w-0 flex-1 truncate text-sm font-bold text-ink">{{ row.item.title || '新任务' }}</b>
+          <span class="num shrink-0 rounded-full bg-idle px-2.5 py-0.5 text-xs font-bold text-idle-ink">{{ row.item.start_time }}-{{ row.item.end_time }} · 正在安排</span>
+        </div>
+      </li>
+    </ol>
+
+    <div v-else class="relative" :class="drag?.moved && 'cursor-grabbing select-none'" :style="{ height: `${layout.height}px` }">
       <!-- 时刻：只留整点文字，没有横线；现在的时刻用珊瑚色写在同一列 -->
       <span v-for="h in hours" :key="h.label" class="num absolute left-0 w-10 -translate-y-1/2 text-[11px] font-semibold leading-none text-ink-mute" :style="{ top: `${h.top}px` }" aria-hidden="true">{{ h.label }}</span>
       <span v-if="nowY !== null" class="num absolute left-0 w-10 -translate-y-1/2 text-[11px] font-bold leading-none text-primary" :style="{ top: `${nowY}px` }">{{ toHm(nowMin) }}</span>

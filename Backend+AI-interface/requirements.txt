@@ -22,3 +22,5 @@ lxml==6.1.3
 pillow==12.2.0
 pypdf==6.16.1
 pypdfium2==5.9.0
+# 文字版 PDF 课表 / 考试表：按表格线还原行列（不调用模型）
+pdfplumber==0.11.10

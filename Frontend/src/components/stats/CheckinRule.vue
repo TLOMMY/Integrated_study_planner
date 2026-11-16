@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 
 /**
  * 打卡规则 ⓘ：点一下展开说明（专注满 5 分钟或完成 1 个任务即算打卡）与今天的打卡进度。
+ * 说明气泡挂到 #overlay-root（最上层），按按钮位置定位，不会被后面的卡片盖住；底色不透明。
  * streak 为后端 streak_info：{ active_today, rule: {text, min_focus_minutes, min_tasks}, today: {...} }
  */
 const props = defineProps({
@@ -26,11 +27,45 @@ const progress = computed(() => {
 
 const open = ref(false)
 const root = ref(null)
-const onDoc = (event) => {
-  if (root.value && !root.value.contains(event.target)) open.value = false
+const bubble = ref(null)
+const pos = ref({ top: 0, left: 0 })
+const WIDTH = 240
+const MARGIN = 12
+
+/** 相对 .phone（手机框演示时它不贴着窗口）计算位置：默认在按钮下方，放不下翻到上方，左右夹在屏幕内。 */
+const place = () => {
+  const button = root.value?.querySelector('button')
+  const frame = document.querySelector('.phone')
+  if (!button || !frame) return
+  const b = button.getBoundingClientRect()
+  const f = frame.getBoundingClientRect()
+  const height = bubble.value?.offsetHeight || 160
+  let left = props.align === 'left' ? b.left - f.left : b.right - f.left - WIDTH
+  left = Math.max(MARGIN, Math.min(left, f.width - WIDTH - MARGIN))
+  let top = b.bottom - f.top + 6
+  if (top + height > f.height - MARGIN) top = Math.max(MARGIN, b.top - f.top - 6 - height)
+  pos.value = { top, left }
 }
-watch(open, (value) => (value ? document.addEventListener('click', onDoc, true) : document.removeEventListener('click', onDoc, true)))
-onBeforeUnmount(() => document.removeEventListener('click', onDoc, true))
+const onDoc = (event) => {
+  if (root.value?.contains(event.target) || bubble.value?.contains(event.target)) return
+  open.value = false
+}
+const close = () => (open.value = false)
+const listen = (on) => {
+  const method = on ? 'addEventListener' : 'removeEventListener'
+  document[method]('click', onDoc, true)
+  // 页面滚动或窗口变化时直接收起，避免气泡和按钮错位
+  window[method]('scroll', close, true)
+  window[method]('resize', close)
+}
+watch(open, async (value) => {
+  listen(value)
+  if (!value) return
+  place()
+  await nextTick()
+  place()
+})
+onBeforeUnmount(() => listen(false))
 </script>
 
 <template>
@@ -48,11 +83,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDoc, true))
     >
       <Icon icon="lucide:info" width="14" />
     </button>
+    <Teleport to="#overlay-root" defer>
     <span
       v-if="open"
+      ref="bubble"
       role="tooltip"
-      class="absolute top-6 z-30 w-60 rounded-2xl border border-ink-line/70 bg-surface p-3 text-left text-xs font-normal leading-5 text-ink-soft shadow-lift"
-      :class="align === 'left' ? 'left-0' : 'right-0'"
+      class="solid-pop absolute z-[95] block w-60 rounded-2xl border border-ink-line p-3 text-left text-xs font-normal leading-5 text-ink-soft shadow-lift"
+      :style="{ top: `${pos.top}px`, left: `${pos.left}px` }"
       @click.stop.prevent
     >
       <span class="flex items-center gap-1.5 font-black text-ink"><Icon icon="lucide:flame" width="14" class="text-flame" />打卡规则</span>
@@ -60,5 +97,6 @@ onBeforeUnmount(() => document.removeEventListener('click', onDoc, true))
       <span class="mt-1 block text-ink-mute">连续天数、断签保护卡、成就、学习足迹和周报都按这个标准统计。</span>
       <span v-if="progress" class="mt-2 block rounded-xl px-2 py-1.5 font-semibold" :class="done ? 'bg-flame-light text-flame' : 'bg-background text-ink-soft'">{{ progress }}</span>
     </span>
+    </Teleport>
   </span>
 </template>

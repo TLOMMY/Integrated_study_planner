@@ -234,8 +234,9 @@ const leave = () => (window.history.length > 1 ? router.back() : router.replace(
           <span class="mt-2 flex items-center gap-1.5 text-xs font-bold text-white/60">
             <span v-if="focus.status === 'running'" class="h-1.5 w-1.5 animate-pulse rounded-full bg-flame" />{{ label }}
           </span>
-          <span v-if="focus.active && focus.distractions" class="mt-1 flex items-center gap-1 text-[10px] font-bold text-white/50">
-            <Icon icon="lucide:eye-off" width="11" />切出 {{ focus.distractions }} 次
+          <span v-if="focus.active && (focus.distractions || focus.screenOffs)" class="mt-1 flex items-center gap-2 text-[10px] font-bold text-white/50">
+            <span v-if="focus.distractions" class="flex items-center gap-1"><Icon icon="lucide:eye-off" width="11" />切出 {{ focus.distractions }} 次</span>
+            <span v-if="focus.screenOffs" class="flex items-center gap-1"><Icon icon="lucide:smartphone" width="11" />熄屏 {{ focus.screenOffs }} 次</span>
           </span>
         </div>
       </div>

@@ -10,7 +10,6 @@ import { computed, reactive, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import { insightApi } from '@/api/insight'
 import { useUiStore } from '@/stores/ui'
-import { formatMinutes } from '@/utils/dates'
 import { friendlyLabel } from '@/utils/aiModels'
 import AiBadge from './AiBadge.vue'
 
@@ -71,17 +70,16 @@ const selection = computed(() => {
   const units = []
   chapters.value.forEach((c, i) => {
     const state = chapterState(c, i)
-    if (state === 'all') units.push({ ...c, sections: (c.children || []).map((s) => s.title) })
+    if (state === 'all') units.push({ ...c, sections: (c.children || []).map((s) => s.title), points: c.points || [] })
     else if (state === 'some')
       c.children.forEach((s, j) => picked.has(keyOf(i, j)) && units.push({ ...s, parent: c.title }))
   })
   return units
 })
-const selectedMinutes = computed(() => selection.value.reduce((sum, u) => sum + Number(u.est_minutes || 0), 0))
+const pointCount = computed(() => chapters.value.reduce((sum, c) => sum + (c.points?.length || 0), 0))
 const allSelected = computed(() => chapters.value.length > 0 && chapters.value.every((c, i) => chapterState(c, i) === 'all'))
 
 const pages = (range) => (range[0] === range[1] ? `第 ${range[0]} ${unit.value}` : `第 ${range[0]}-${range[1]} ${unit.value}`)
-const words = (n) => (n >= 10000 ? `${(n / 10000).toFixed(1)} 万字` : `${n} 字`)
 
 const choose = () => input.value?.click()
 
@@ -118,15 +116,17 @@ const reset = () => {
 }
 
 const buildText = () => {
-  const lines = selection.value.map((u, n) => {
+  const lines = []
+  selection.value.forEach((u, n) => {
     const title = u.parent ? `${u.parent} / ${u.title}` : u.title
-    const extra = u.sections?.length ? `（含 ${u.sections.slice(0, 6).join('、')}${u.sections.length > 6 ? ' 等' : ''}）` : ''
-    return `${n + 1}. ${title}${extra}：${pages(u.pages)}，预计 ${u.est_minutes} 分钟`
+    const extra = !u.points?.length && u.sections?.length ? `（含 ${u.sections.slice(0, 8).join('、')}${u.sections.length > 8 ? ' 等' : ''}）` : ''
+    lines.push(`${n + 1}. ${title}${extra}`)
+    for (const point of u.points || []) lines.push(`   - ${point}`)
   })
   return [
-    `请按以下章节帮我安排复习（讲义《${outline.value.file_name}》，共 ${lines.length} 个单元，预计 ${formatMinutes(selectedMinutes.value)}）：`,
+    `请以这份提纲为主线帮我安排复习（讲义《${outline.value.file_name}》，共 ${selection.value.length} 个章节）。下面是每章要掌握的知识点：`,
     ...lines,
-    '请结合我的课表和空闲时间，把每个单元安排成具体的复习任务，难的章节分开多次复习，最后留出整体回顾的时间。',
+    '请按知识点的难度和重要程度分配时间（不要按字数），结合我的课表和空闲时间排成具体的复习任务；难点分开多次复习，任务名写清复习哪几个知识点，最后留出整体回顾的时间。',
   ].join('\n')
 }
 
@@ -182,7 +182,7 @@ defineExpose({ choose, reset })
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-bold text-ink" :title="outline.file_name">{{ outline.file_name }}</p>
           <p class="text-xs text-ink-mute">
-            {{ outline.pages }} {{ unit }} · {{ chapters.length }} 个章节 · 共约 {{ formatMinutes(outline.total_minutes) }}
+            {{ outline.pages }} {{ unit }} · {{ chapters.length }} 个章节<template v-if="pointCount"> · {{ pointCount }} 个知识点</template>
             · {{ outline.provider === 'llm' ? 'AI 已整理' : sourceLabel(outline) }}
           </p>
         </div>
@@ -195,7 +195,7 @@ defineExpose({ choose, reset })
           <input type="checkbox" class="h-4 w-4 accent-primary" :checked="allSelected" @change="selectAll(!allSelected)" />
           全选
         </label>
-        <span class="text-ink-mute">已选 {{ selection.length }} 个单元 · <span class="num font-bold text-ink">{{ formatMinutes(selectedMinutes) }}</span></span>
+        <span class="text-ink-mute">已选 {{ selection.length }} 个章节</span>
       </div>
 
       <ul class="max-h-[46vh] space-y-1.5 overflow-y-auto pr-1 lg:max-h-[420px]">
@@ -211,28 +211,31 @@ defineExpose({ choose, reset })
             />
             <button type="button" class="min-w-0 flex-1 text-left" @click="chapter.children?.length ? toggleOpen(i) : toggleChapter(chapter, i)">
               <p class="truncate text-sm font-bold text-ink">{{ chapter.title }}</p>
-              <p class="text-[11px] text-ink-mute">{{ pages(chapter.pages) }}<template v-if="chapter.words"> · {{ words(chapter.words) }}</template></p>
+              <p class="text-[11px] text-ink-mute">{{ pages(chapter.pages) }}<template v-if="chapter.points?.length"> · {{ chapter.points.length }} 个知识点</template></p>
             </button>
-            <span class="flex shrink-0 items-center gap-0.5 text-xs font-bold text-primary">
-              <Icon icon="lucide:clock" width="12" /><span class="num">{{ chapter.est_minutes }}</span>分
-            </span>
             <button
-              v-if="chapter.children?.length"
+              v-if="chapter.children?.length || chapter.points?.length"
               type="button"
               class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-ink-mute hover:bg-background"
-              :aria-label="open.has(i) ? '收起小节' : '展开小节'"
+              :aria-label="open.has(i) ? '收起' : '展开知识点'"
               :aria-expanded="open.has(i)"
               @click="toggleOpen(i)"
             >
               <Icon icon="lucide:chevron-right" width="16" class="transition" :class="open.has(i) && 'rotate-90'" />
             </button>
           </div>
-          <ul v-if="chapter.children?.length && open.has(i)" class="space-y-0.5 border-t border-ink-line/60 px-3 py-1.5">
+          <!-- 知识点：只看不选，整章勾选时一起交给 AI -->
+          <ul v-if="chapter.points?.length && open.has(i)" class="space-y-1 border-t border-ink-line/60 px-3 py-2">
+     <li v-for="(point, k) in chapter.points" :key="k" class="flex gap-2 pl-5 text-xs leading-5 text-ink-soft">
+       <i class="mt-2 h-1 w-1 shrink-0 rounded-full bg-primary" />{{ point }}
+     </li>
+   </ul>
+          <ul v-else-if="chapter.children?.length && open.has(i)" class="space-y-0.5 border-t border-ink-line/60 px-3 py-1.5">
             <li v-for="(section, j) in chapter.children" :key="j">
               <label class="flex cursor-pointer items-center gap-2 rounded-xl py-1.5 pl-5 pr-1 hover:bg-background">
                 <input type="checkbox" class="h-3.5 w-3.5 shrink-0 accent-primary" :checked="picked.has(keyOf(i, j))" @change="toggleChild(i, j)" />
                 <span class="min-w-0 flex-1 truncate text-xs text-ink-soft">{{ section.title }}</span>
-                <span class="shrink-0 text-[11px] text-ink-mute">{{ pages(section.pages) }} · {{ section.est_minutes }} 分</span>
+                <span class="shrink-0 text-[11px] text-ink-mute">{{ pages(section.pages) }}</span>
               </label>
             </li>
           </ul>

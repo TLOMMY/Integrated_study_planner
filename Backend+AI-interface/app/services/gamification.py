@@ -9,6 +9,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from sqlalchemy import func
@@ -452,11 +453,17 @@ def maybe_award_daily_goal(db: Session, user: User, day: Optional[date] = None) 
     return 0
 
 
+def avatar_url(user) -> str:
+    """自定义头像经后端读取：/users/avatar/<id>/<版本>.jpg（版本是内容摘要，换图后地址跟着变）；没有时为空。"""
+    key = getattr(user, "avatar_image", None)
+    return f"/users/avatar/{user.id}/{Path(key).stem}.jpg" if key else ""
+
+
 # ---------------------------------------------------------------- 排行榜 / 热力图 / 科目分布
 def weekly_leaderboard(db: Session, me: User, limit: int = 10, ref: Optional[date] = None) -> dict:
     week_start = timeutil.monday_of(ref or timeutil.today())
     rows = (
-        db.query(User.id, User.full_name, User.username, User.avatar, User.is_demo, func.sum(XpEvent.amount))
+        db.query(User.id, User.full_name, User.username, User.avatar, User.is_demo, func.sum(XpEvent.amount), User.avatar_image)
         .join(XpEvent, XpEvent.user_id == User.id)
         .filter(XpEvent.event_date >= week_start, User.is_active.is_(True))
         .filter((User.is_demo.is_(False)) | (User.id == me.id) if not me.is_demo else True)
@@ -470,11 +477,12 @@ def weekly_leaderboard(db: Session, me: User, limit: int = 10, ref: Optional[dat
             "user_id": uid,
             "name": full_name or username,
             "avatar": avatar or "🦉",
+            "avatar_url": f"/users/avatar/{uid}/{Path(image).stem}.jpg" if image else "",
             "xp": int(xp or 0),
             "is_me": uid == me.id,
             "is_demo": bool(is_demo) and uid != me.id,
         }
-        for index, (uid, full_name, username, avatar, is_demo, xp) in enumerate(rows, start=1)
+        for index, (uid, full_name, username, avatar, is_demo, xp, image) in enumerate(rows, start=1)
     ]
     mine = next((entry for entry in entries if entry["is_me"]), None)
     if mine is None:
@@ -483,6 +491,7 @@ def weekly_leaderboard(db: Session, me: User, limit: int = 10, ref: Optional[dat
             "user_id": me.id,
             "name": me.full_name or me.username,
             "avatar": me.avatar or "🦉",
+            "avatar_url": avatar_url(me),
             "xp": 0,
             "is_me": True,
             "is_demo": False,
@@ -509,6 +518,7 @@ def group_leaderboard(db: Session, me: User, member_ids: List[int], ref: Optiona
             "user_id": u.id,
             "name": u.full_name or u.username,
             "avatar": u.avatar or "🦉",
+            "avatar_url": avatar_url(u),
             "xp": int(xp.get(u.id) or 0),
             "is_me": u.id == me.id,
             "is_demo": False,

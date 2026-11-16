@@ -5,7 +5,7 @@
  * - 静态资源（/assets/ 下带 hash 的 js/css）：缓存优先，文件名变了自然换新
  * - 接口请求（/api/）与跨域请求：一律不缓存，始终走网络；断网时的接口数据由前端 request.js 的本地缓存提供
  */
-const CACHE = 'study-planner-v3'
+const CACHE = 'study-planner-v4'
 const SHELL = ['/', '/manifest.webmanifest', '/app-icon.svg', '/icons/icon-192.png']
 
 /** 从 HTML / js 文本里找出 /assets/ 下的文件。 */

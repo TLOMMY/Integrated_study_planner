@@ -56,6 +56,16 @@ export const useAuthStore = defineStore('auth', {
       return this.user
     },
 
+    async uploadAvatar(file) {
+      this.user = await userApi.uploadAvatar(file)
+      return this.user
+    },
+
+    async deleteAvatar() {
+      this.user = await userApi.deleteAvatar()
+      return this.user
+    },
+
     /** 改密码 / 退出其他设备：后端会换发新凭证，当前设备保持登录。 */
     async changePassword(payload) {
       this._accept(await userApi.changePassword(payload))

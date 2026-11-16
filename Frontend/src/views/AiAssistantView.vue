@@ -43,9 +43,10 @@ const imageInput = ref(null)
 const fileInput = ref(null)
 const menu = ref(false)
 const menuBox = ref(null)
+// 模板里 pick(imageInput) 传进来的是 <input> 元素本身（ref 在模板中已自动解包）
 const pick = (input) => {
   menu.value = false
-  input.value?.click()
+  input?.click()
 }
 const onPicked = (event) => {
   tray.add(event.target.files)
@@ -260,7 +261,7 @@ onActivated(consumeQuery)
               <Icon icon="lucide:plus" width="20" class="transition" :class="menu && 'rotate-45'" />
             </button>
             <Transition enter-active-class="transition duration-150" enter-from-class="translate-y-1 opacity-0" leave-active-class="transition duration-100" leave-to-class="opacity-0">
-              <div v-if="menu" class="material absolute bottom-[52px] left-0 z-30 w-64 rounded-[22px] bg-surface p-1.5 shadow-2xl" role="menu">
+              <div v-if="menu" class="solid-pop absolute bottom-[52px] left-0 z-30 w-64 rounded-[22px] border border-ink-line p-1.5 shadow-2xl" role="menu">
                 <button class="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left hover:bg-background" type="button" role="menuitem" @click="pick(imageInput)">
                   <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-light text-primary"><Icon icon="lucide:image" width="17" /></span>
                   <span class="min-w-0"><b class="block text-sm font-bold text-ink">图片</b><small class="block text-[11px] text-ink-mute">照片、截图、拍的讲义或题目</small></span>

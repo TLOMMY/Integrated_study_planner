@@ -1,5 +1,5 @@
 <script setup>
-/** 设置页 · 专注设置（默认声音：白噪音或我的歌单、音量、防切出提醒、我的音乐） */
+/** 设置页 · 专注设置（默认声音：白噪音或我的歌单、音量、防切出提醒、熄屏算不算切出、锁屏倒计时、我的音乐） */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { Icon } from '@iconify/vue'
 import MusicLibrary from './MusicLibrary.vue'
@@ -8,15 +8,24 @@ import { playlistKey } from '@/utils/music'
 import { library, playlistForKey, reloadLibrary } from '@/composables/useMusicLibrary'
 import { useFocusStore } from '@/stores/focus'
 import { useUiStore } from '@/stores/ui'
+import {
+  hasFocusNative, lockScreenEnabled, lockScreenPermission, requestLockScreenPermission,
+  screenOffCounts, setLockScreenEnabled, setScreenOffCounts,
+} from '@/utils/focusNative'
 
 const focus = useFocusStore()
 const ui = useUiStore()
 const guard = ref(guardEnabled())
 const strict = ref(strictEnabled())
+const native = hasFocusNative()
+const screenOff = ref(screenOffCounts())
+const lockScreen = ref(lockScreenEnabled())
+const lockDenied = ref(false)
 const previewing = ref(false)
 let previewTimer = null
 
 onMounted(async () => {
+  if (native && lockScreen.value) lockDenied.value = (await lockScreenPermission()) === 'denied'
   await reloadLibrary()
   // 默认声音指向的歌单已被删除：退回关闭
   if (focus.noiseKind.startsWith('playlist:') && !playlistForKey(focus.noiseKind) && !library.error) focus.setNoise('off')
@@ -32,6 +41,24 @@ const toggleStrict = () => {
   setStrictEnabled(!strict.value)
   strict.value = strictEnabled()
   ui.success(strict.value ? '已开启严格模式' : '已关闭严格模式')
+}
+
+const toggleScreenOff = () => {
+  screenOff.value = !screenOff.value
+  setScreenOffCounts(screenOff.value)
+  ui.success(screenOff.value ? '熄屏也会记为切出' : '熄屏不再算切出')
+}
+const toggleLockScreen = async () => {
+  lockScreen.value = !lockScreen.value
+  setLockScreenEnabled(lockScreen.value)
+  lockDenied.value = false
+  if (lockScreen.value) {
+    const state = await requestLockScreenPermission()
+    lockDenied.value = state === 'denied'
+    if (lockDenied.value) ui.toast('通知权限被关闭了：到系统设置 → 应用 → 学业管家 → 通知里打开', 'warning', 4200)
+  }
+  // 进行中的专注立刻生效
+  focus.syncNative()
 }
 
 const pick = (key) => {
@@ -125,6 +152,28 @@ onBeforeUnmount(() => {
       </span>
       <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="strict ? 'bg-primary' : 'bg-ink-line'">
         <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="strict ? 'left-[22px]' : 'left-0.5'" />
+      </span>
+    </button>
+    <!-- 安卓 App：熄屏和切到别的应用分开算 -->
+    <button v-if="guard && native" class="flex w-full items-center gap-3 border-t border-ink-line/60 px-4 py-3.5 text-left" type="button" role="switch" :aria-checked="screenOff" @click="toggleScreenOff">
+      <Icon icon="lucide:smartphone" width="20" class="text-flame" />
+      <span class="flex-1">
+        <span class="block text-sm font-semibold text-ink">熄屏也算切出</span>
+        <span class="block text-[11px] text-ink-mute">默认关闭：专注时按电源键熄屏，计时照常走，不记切出、严格模式也不暂停；打开后熄屏和切到别的应用一样计数</span>
+      </span>
+      <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="screenOff ? 'bg-primary' : 'bg-ink-line'">
+        <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="screenOff ? 'left-[22px]' : 'left-0.5'" />
+      </span>
+    </button>
+    <button v-if="native" class="flex w-full items-center gap-3 border-t border-ink-line/60 px-4 py-3.5 text-left" type="button" role="switch" :aria-checked="lockScreen" @click="toggleLockScreen">
+      <Icon icon="lucide:lock-keyhole" width="20" class="text-primary" />
+      <span class="flex-1">
+        <span class="block text-sm font-semibold text-ink">锁屏显示倒计时</span>
+        <span class="block text-[11px] text-ink-mute">专注时在锁屏和通知栏显示剩余时间，需要通知权限；锁屏上看不到内容时，到系统设置里允许"锁屏显示通知"</span>
+        <span v-if="lockScreen && lockDenied" class="mt-0.5 block text-[11px] font-bold text-danger">通知权限已关闭：到系统设置 → 应用 → 学业管家 → 通知里打开</span>
+      </span>
+      <span class="relative h-6 w-11 shrink-0 rounded-full transition" :class="lockScreen ? 'bg-primary' : 'bg-ink-line'">
+        <span class="absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all" :class="lockScreen ? 'left-[22px]' : 'left-0.5'" />
       </span>
     </button>
   </div>

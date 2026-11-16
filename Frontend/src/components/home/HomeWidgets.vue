@@ -1,5 +1,8 @@
 <script setup>
-/** 首页右栏 / 手机端概览下方的小组件：考试倒计时、断签保护提示、周报入口 */
+/**
+ * 首页右栏 / 手机端概览下方的小组件：考试倒计时、断签保护提示、周报入口。
+ * 手机：考试只显示最近一场（"全部"里看完整列表），不放周报入口；电脑右栏保持三场 + 周报。
+ */
 import { computed, onActivated, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
@@ -44,11 +47,11 @@ onActivated(load)
     <section class="card mt-3 p-4">
       <div class="mb-3 flex items-center justify-between">
         <h2 class="section-title flex items-center gap-1.5"><Icon icon="lucide:alarm-clock" width="16" class="text-danger" />考试倒计时</h2>
-        <RouterLink :to="{ name: 'timetable', query: { exams: exams.length ? '1' : 'new' } }" class="text-xs font-bold text-primary">{{ exams.length ? '全部' : '添加' }}</RouterLink>
+        <RouterLink :to="{ name: 'timetable', query: { exams: '1' } }" class="text-xs font-bold text-primary">{{ exams.length ? '全部' : '添加' }}<span v-if="timetable.exams.length > 1" class="num lg:hidden"> {{ timetable.exams.length }}</span></RouterLink>
       </div>
       <p v-if="!exams.length" class="rounded-2xl bg-background px-3 py-3 text-xs text-ink-mute">记下考试日期，临近时提醒你，并可让 AI 排复习计划</p>
       <ul v-else class="space-y-2">
-        <li v-for="exam in exams" :key="exam.id" class="flex items-center gap-3 rounded-2xl px-3 py-2.5" :class="exam.urgent ? 'bg-danger-light' : 'bg-background'">
+        <li v-for="(exam, i) in exams" :key="exam.id" class="flex items-center gap-3 rounded-2xl px-3 py-2.5" :class="[exam.urgent ? 'bg-danger-light' : 'bg-background', i > 0 && 'hidden lg:flex']">
           <div class="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl" :class="exam.urgent ? 'bg-danger text-on-danger' : 'bg-surface text-primary'">
             <template v-if="exam.days_left > 1">
               <span class="num text-base font-black leading-none">{{ exam.days_left }}</span>
@@ -71,7 +74,7 @@ onActivated(load)
     <RouterLink
       v-if="isMonday"
       :to="{ name: 'report', query: { week: lastWeek } }"
-      class="flex items-center gap-3 rounded-3xl bg-primary px-4 py-3.5 text-on-primary shadow-lift"
+      class="hidden lg:flex items-center gap-3 rounded-3xl bg-primary px-4 py-3.5 text-on-primary shadow-lift"
     >
       <Icon icon="lucide:file-chart-column" width="22" class="shrink-0" />
       <span class="flex-1">
@@ -80,7 +83,7 @@ onActivated(load)
       </span>
       <Icon icon="lucide:chevron-right" width="18" />
     </RouterLink>
-    <RouterLink v-else :to="{ name: 'report', query: { week: thisWeek } }" class="flex items-center justify-between rounded-3xl bg-surface px-4 py-3.5 shadow-soft">
+    <RouterLink v-else :to="{ name: 'report', query: { week: thisWeek } }" class="hidden lg:flex items-center justify-between rounded-3xl bg-surface px-4 py-3.5 shadow-soft">
       <span class="flex items-center gap-2 text-sm font-bold text-ink"><Icon icon="lucide:file-chart-column" width="18" class="text-primary" />本周学习报告</span>
       <Icon icon="lucide:chevron-right" width="18" class="text-ink-mute" />
     </RouterLink>

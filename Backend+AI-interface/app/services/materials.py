@@ -147,13 +147,18 @@ def page_chunks(page_chars: List[int], total: int) -> List[dict]:
 
 
 # ---------------------------------------------------------------- 模型整理
-LLM_PROMPT = """你是学习规划助手。用户上传了一份讲义，下面是从 PDF 中提取的章节（页码范围、字数）与每章开头的文字。
-请把它整理成适合复习的单元：太碎的小节合并，太长的章节（超过 120 分钟）拆开，去掉封面、目录、参考文献等不用复习的部分；
-标题要简洁清楚（保留"第X章"等编号）。只输出一个 JSON 对象：
-{"chapters": [{"title": "第1章 行列式", "pages": [1, 12], "est_minutes": 60,
-  "children": [{"title": "1.1 二阶与三阶行列式", "pages": [1, 4], "est_minutes": 20}]}]}
-规则：pages 为 [起始页, 结束页]，必须在 1 到总页数之间；est_minutes 按约 150 字/分钟、内容难度估算，10-240 之间；
-children 可省略；不要编造讲义里没有的内容。"""
+LLM_PROMPT = """你是学习规划助手。用户上传了一份讲义或复习提纲，下面给出全文（按页标出页码）和本地识别出的标题（可能不全）。
+请通读全文，按原文的章节结构列出每一章，以及每章要复习的知识点。只输出一个 JSON 对象：
+{"chapters": [{"title": "Chapter 6 Priority Queues (Heaps)", "pages": [3, 5], "est_minutes": 60,
+  "points": ["二叉堆的结构性质与堆序性质", "insert / deleteMin 的上滤与下滤", "buildHeap 的 O(N) 证明"],
+  "children": [{"title": "6.3 Binary Heap", "pages": [3, 4], "est_minutes": 30}]}]}
+规则：
+1. 章节以原文为准，一章都不要漏（复习提纲里每个"Chapter / 第X章"都要列出）；标题照抄原文（保留编号）；封面、目录、参考文献不列。
+2. points 是这一章要掌握的知识点，照原文的要点概括，每条一句话，3-12 条；不要编造原文没有的内容。
+3. est_minutes 是按知识点多少和难度估计的复习时间（不是按字数），20-240 之间。
+4. pages 为 [起始页, 结束页]，在 1 到总页数之间；不确定就填这一章大致所在的页。children 可省略。"""
+# 发给模型的全文上限：复习提纲一般几千字，讲义太长时截断（本地识别的标题另外给全）
+LLM_TEXT_LIMIT = 24000
 
 
 def _validated(items, total: int, depth: int = 1) -> List[dict]:
@@ -167,12 +172,16 @@ def _validated(items, total: int, depth: int = 1) -> List[dict]:
         pages = item.get("pages")
         try:
             start, end = int(pages[0]), int(pages[1])
-            minutes = int(item.get("est_minutes"))
+            minutes = int(item.get("est_minutes") or 60)
         except (TypeError, ValueError, IndexError, KeyError):
             continue
         if not title or not (1 <= start <= end <= total):
             continue
         node = {"title": title, "pages": [start, end], "est_minutes": max(5, min(MAX_MINUTES, minutes))}
+        # 知识点：模型从全文里概括出的要点，前端展示并一起交给 AI 排复习
+        points = [re.sub(r"\s+", " ", str(p)).strip()[:120] for p in (item.get("points") or []) if str(p).strip()]
+        if points:
+            node["points"] = points[:20]
         if depth == 1:
             children = _validated(item.get("children"), total, depth=2)
             children = [c for c in children if start <= c["pages"][0] and c["pages"][1] <= end]
@@ -182,16 +191,30 @@ def _validated(items, total: int, depth: int = 1) -> List[dict]:
     return result
 
 
+def _full_text(pages: List[str], limit: int = LLM_TEXT_LIMIT) -> str:
+    """全文按页拼起来（标出页码），超过上限时截断。"""
+    chunks, used = [], 0
+    for index, text in enumerate(pages, start=1):
+        text = re.sub(r"[ \t]+", " ", text or "").strip()
+        if not text:
+            continue
+        piece = f"【第 {index} 页】\n{text}\n"
+        if used + len(piece) > limit:
+            chunks.append(piece[: max(0, limit - used)] + "\n（后面的内容太长，已截断）")
+            break
+        chunks.append(piece)
+        used += len(piece)
+    return "\n".join(chunks)
+
+
 def llm_outline(config, chapters: List[dict], pages: List[str], total: int, file_name: str) -> List[dict]:
-    lines = []
-    for chapter in chapters:
-        start = chapter["pages"][0]
-        preview = re.sub(r"\s+", " ", pages[start - 1] if start - 1 < len(pages) else "")[:120]
-        lines.append({"title": chapter["title"], "pages": chapter["pages"], "words": chapter["words"],
-                      "children": [c["title"] for c in chapter.get("children", [])], "preview": preview})
+    """全文和本地识别出的标题一起交给模型，由它列出完整的章节和知识点（本地识别常漏章节）。"""
+    lines = [{"title": c["title"], "pages": c["pages"], "children": [x["title"] for x in c.get("children", [])]}
+             for c in chapters]
     messages = [
         {"role": "system", "content": LLM_PROMPT},
-        {"role": "user", "content": f"文件：{file_name}，共 {total} 页。\n章节：\n" + json.dumps(lines, ensure_ascii=False)},
+        {"role": "user", "content": (f"文件：{file_name}，共 {total} 页。\n本地识别的标题（可能不全）："
+                + json.dumps(lines, ensure_ascii=False) + "\n\n全文：\n" + _full_text(pages))},
     ]
     data = llm.chat_json(config, messages, temperature=0.2)
     result = _validated(data.get("chapters"), total)

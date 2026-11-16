@@ -96,6 +96,15 @@ body {
     @apply font-num tabular-nums;
   }
   /* 桌面端页面内容的统一宽度：居中、两侧留白（内边距由各页面用 lg:px-* 控制） */
+  /* iOS Safari：日期 / 时间框里的值默认居中并带外边距，撑高输入框；统一左对齐、去掉边距，和普通输入框一样高 */
+  .field::-webkit-date-and-time-value {
+    margin: 0;
+    text-align: left;
+  }
+  /* 说明气泡、下拉菜单这类浮在最上层的小弹层：任何主题下都用不透明的卡片色，不透出下面的内容 */
+  .solid-pop {
+    background-color: rgb(var(--c-surface));
+  }
   .desk-page {
     @apply w-full lg:mx-auto lg:max-w-[1180px];
   }

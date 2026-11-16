@@ -38,7 +38,7 @@ export const FLOWS = [
       state.title = `端到端测试任务 ${viewport.name} ${Date.now() % 100000}`
       await page.getByRole('button', { name: '添加任务' }).first().click()
       const sheet = page.getByRole('dialog')
-      await sheet.getByPlaceholder('准备做什么？').fill(state.title)
+      await sheet.getByLabel('一句话添加任务').fill(state.title)
       await sheet.getByRole('button', { name: '添加任务' }).click()
       await sheet.waitFor({ state: 'detached' })
       await page.getByText(state.title, { exact: true }).first().waitFor()
@@ -214,7 +214,7 @@ export const FLOWS = [
         await nav(/^任务/)
         await page.getByRole('button', { name: '添加任务' }).first().click()
         const sheet = page.getByRole('dialog')
-        await sheet.getByPlaceholder('准备做什么？').fill('离线时新建')
+        await sheet.getByLabel('一句话添加任务').fill('离线时新建')
         await sheet.getByRole('button', { name: '添加任务' }).click()
         await page.getByText(/离线状态下无法保存/).first().waitFor()
       } finally {

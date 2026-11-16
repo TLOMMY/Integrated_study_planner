@@ -77,6 +77,57 @@ def test_tab_separated_with_header():
     assert items[1]["start_time"] == schedule.DEFAULT_PERIOD_TIMES[0]["start"]
 
 
+def test_class_column_is_split_and_kept_per_session():
+    """全年级一张表：同一门课按班级分两场，两场都保留，班级拆成列表；"班级"列不再被当成无关列忽略。"""
+    rows = [
+        ["课程名称", "考试日期", "考试时间", "考试地点", "考试班级"],
+        ["数据结构", "2027-01-14", "09:00-11:00", "教一 201", "25软件工程1班;25软件工程2班"],
+        ["数据结构", "2027-01-14", "14:00-16:00", "教一 305", "25工业软件班、25软件工程卓越班"],
+        ["大学英语", "2027-01-15", "09:00-11:00", "教二 101", ""],
+    ]
+    text = "\n".join("\t".join(r) for r in rows)
+    items, _ = exam_import.parse_text(text, _user(), [], TODAY)
+    assert [i["classes"] for i in items] == [["25软件工程1班", "25软件工程2班"], ["25工业软件班", "25软件工程卓越班"], []]
+
+
+def test_preview_lists_classes(client, register):
+    headers, _ = register()
+    soon = (date.today() + timedelta(days=20)).isoformat()
+    rows = [
+        ["课程名称", "考试日期", "考试时间", "考试班级"],
+        ["数据结构", soon, "09:00-11:00", "软件1班;软件2班"],
+        ["数据结构", soon, "14:00-16:00", "软件3班"],
+        ["高等数学", soon, "19:00-21:00", "软件1班;软件3班"],
+    ]
+    preview = body(_preview(client, headers, text="\n".join("\t".join(r) for r in rows)))
+    assert preview["count"] == 3, "同名同日不同场次都要保留"
+    assert preview["classes"] == ["软件1班", "软件3班", "软件2班"]
+
+
+def test_class_names_are_merged():
+    """同一个班不同写法归成一个：简称、年级写法、中文数字、括号；不同的班不合并。"""
+    key = exam_import.class_key
+    assert key("25软工1班") == key("2025级软件工程1班") == key("25软件工程(1)班") == key("25软件工程一班")
+    assert key("25软件工程1班") != key("25软件工程2班")
+    assert key("25软件工程1班") != key("25工业软件1班")
+
+    items = [
+        {"classes": ["2025级软件工程1班", "25软件工程2班"]},
+        {"classes": ["25软工1班"]},
+        {"classes": ["25软件工程一班", "25软件工程1班"]},
+        {"classes": ["2025级软件工程1班"]},
+    ]
+    exam_import.merge_classes(items)
+    assert items[0]["classes"] == ["2025级软件工程1班", "25软件工程2班"]
+    assert items[1]["classes"] == ["2025级软件工程1班"]
+    assert items[2]["classes"] == ["2025级软件工程1班"], "同一场里两种写法合并后只留一个"
+
+
+def test_model_aliases_are_applied():
+    items = [{"classes": ["卓越班"]}, {"classes": ["25软件工程卓越班"]}]
+    exam_import.merge_classes(items, {"卓越班": "25软件工程卓越班"})
+    assert items[0]["classes"] == items[1]["classes"] == ["25软件工程卓越班"]
+
 # ---------------------------------------------------------------- 接口
 def test_preview_commit_and_skip_duplicates(client, register, fake_llm):  # noqa: F811
     calls, _ = fake_llm

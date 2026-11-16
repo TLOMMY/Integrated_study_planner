@@ -10,7 +10,7 @@ import { Icon } from '@iconify/vue'
 import { useAuthStore } from '@/stores/auth'
 import { useDesktop } from '@/composables/useDesktop'
 import { finishTour, locallyDone, startTour, tour } from '@/composables/useOnboarding'
-import { TOUR_STEPS, placeCard, shouldAutoStart, spotlight, targetFor } from '@/utils/tour'
+import { TOUR_STEPS, needsPanel, placeCard, shouldAutoStart, spotlight, targetFor } from '@/utils/tour'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -68,6 +68,8 @@ const locate = async () => {
   rect.value = null
   const routeTo = (desktop.value ? step.value.desktopRoute : step.value.mobileRoute) || step.value.route
   if (routeTo && route.path !== routeTo) await router.push(routeTo).catch(() => {})
+  // 手机：面板里的入口先打开中心按钮面板，其他步骤收起
+  tour.panel = needsPanel(step.value, desktop.value)
   await nextTick()
   const name = targetFor(step.value, desktop.value)
   if (!name) return measure()

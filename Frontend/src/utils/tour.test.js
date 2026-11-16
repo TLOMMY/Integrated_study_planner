@@ -2,14 +2,20 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { TOUR_STEPS, placeCard, shouldAutoStart, spotlight, targetFor } from './tour.js'
+import { TOUR_STEPS, needsPanel, placeCard, shouldAutoStart, spotlight, targetFor } from './tour.js'
 
 const SRC = new URL('..', import.meta.url).pathname.replace(/^\/(\w:)/, '$1')
 const walk = (dir) => readdirSync(dir).flatMap((n) => (statSync(join(dir, n)).isDirectory() ? walk(join(dir, n)) : /\.vue$/.test(n) ? [join(dir, n)] : []))
 
-test('步骤顺序：导入课表 → 添加任务 → 开始专注 → AI 助手 → 成长', () => {
-  assert.deepEqual(TOUR_STEPS.map((s) => s.key), ['welcome', 'import', 'task', 'focus', 'ai', 'growth', 'done'])
+test('步骤顺序：日程 → 导入课表 → 任务 → 中心 AI 按钮 → 一键排今天 → 番茄钟 → 成长', () => {
+  assert.deepEqual(TOUR_STEPS.map((s) => s.key), ['welcome', 'day', 'import', 'task', 'ai', 'autoplan', 'focus', 'growth', 'done'])
   for (const step of TOUR_STEPS) assert.ok(step.title && step.text && step.icon, step.key)
+})
+
+test('手机上一键排今天、番茄钟两步要先打开中心面板；电脑不用', () => {
+  const panelSteps = TOUR_STEPS.filter((s) => needsPanel(s, false)).map((s) => s.key)
+  assert.deepEqual(panelSteps, ['autoplan', 'focus'])
+  assert.equal(TOUR_STEPS.some((s) => needsPanel(s, true)), false)
 })
 
 test('每个目标在页面里都有对应的 data-tour（电脑与手机分别检查）', () => {

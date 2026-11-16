@@ -5,6 +5,8 @@
  * 头部：日期 + 连续打卡、教学周 · 节数 · 空闲 + 日/周/月、星期条、上课通知、近期考试。
  * 一键排今天（中心按钮面板或 ?autoplan=1 进来）：建议块直接画在轴上，确认后才写入，可撤销。
  * 点空闲段：半屏快建，只填名字和时长。
+ * 电脑端：页面铺满内容区（与 1.1 相同宽度），左边时间轴（宽卡片），右栏是节课 / 任务 / 可支配三格和没有日期的待办；
+ * 星期条每天横排"一 19"、拉宽；手机端不变。右栏"没有日期的待办"可以拖到左边时间轴上，排进这一天（可撤销）。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -16,13 +18,15 @@ import MonthView from '@/components/day/MonthView.vue'
 import TaskEditor from '@/components/task/TaskEditor.vue'
 import QuickSlotSheet from '@/components/day/QuickSlotSheet.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
+import TaskItem from '@/components/task/TaskItem.vue'
 import { dayApi, taskApi } from '@/api'
 import { useTasksStore } from '@/stores/tasks'
 import { useTimetableStore } from '@/stores/timetable'
 import { useGameStore } from '@/stores/game'
 import { useHomeStore } from '@/stores/home'
 import { useUiStore } from '@/stores/ui'
-import { compactMinutes, mondayOf, todayStr, weekdayLabel } from '@/utils/dates'
+import { compactMinutes, mondayOf, shortMinutes, todayStr, weekdayLabel } from '@/utils/dates'
+import { focusRoute } from '@/utils/task'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,19 +139,37 @@ const goToday = () => {
 const shiftDay = (n) => (selected.value = dayjs(selected.value).add(n, 'day').format('YYYY-MM-DD'))
 const shiftWeek = (n) => shiftDay(n * 7)
 
-// 日视图的星期条：左右滑动切换上一周 / 下一周（保留选中的星期几）
+// ---------------------------------------------------------------- 切换动效
+// 换日期时记下方向：往后滑入（next）还是往前（prev）；星期条、标题、时间轴都按这个方向过渡
+const direction = ref('next')
+watch(selected, (now, before) => (direction.value = now >= before ? 'next' : 'prev'))
+const weekKey = computed(() => mondayOf(selected.value).format('YYYY-MM-DD'))
+
+// 日视图的星期条：左右滑动切换上一周 / 下一周（保留选中的星期几）；拖动时星期条跟着手指走，松手后滑出、新的一周从另一边滑入
 let swipe = null
+const dragX = ref(0)
 const onStripStart = (event) => {
   const t = event.touches?.[0]
-  swipe = t ? { x: t.clientX, y: t.clientY } : null
+  swipe = t ? { x: t.clientX, y: t.clientY, horizontal: null } : null
+  dragX.value = 0
 }
-const onStripEnd = (event) => {
-  const t = event.changedTouches?.[0]
+const onStripMove = (event) => {
+  const t = event.touches?.[0]
   if (!swipe || !t) return
   const dx = t.clientX - swipe.x
   const dy = t.clientY - swipe.y
+  if (swipe.horizontal === null && Math.abs(dx) + Math.abs(dy) > 8) swipe.horizontal = Math.abs(dx) > Math.abs(dy)
+  // 越拖越"重"，最多跟到 120px
+  if (swipe.horizontal) dragX.value = Math.max(-120, Math.min(120, dx * 0.6))
+}
+const onStripEnd = (event) => {
+  const t = event.changedTouches?.[0]
+  const start = swipe
   swipe = null
-  if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftWeek(dx < 0 ? 1 : -1)
+  const dx = start && t ? t.clientX - start.x : 0
+  const dy = start && t ? t.clientY - start.y : 0
+  dragX.value = 0
+  if (start && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) shiftWeek(dx < 0 ? 1 : -1)
 }
 // ---------------------------------------------------------------- 上课通知（只看今天）：正在上 / 下一节 / 今天没课 / 都上完了
 const nowMin = ref(dayjs().hour() * 60 + dayjs().minute())
@@ -178,6 +200,14 @@ const classNotice = computed(() => {
 const exams = computed(() => timetable.exams.filter((e) => e.days_left <= 30))
 const examText = (e) => `${e.subject || e.title}`
 const examDays = (e) => (e.days_left === 0 ? '今天' : e.days_left === 1 ? '明天' : `${e.days_left}`)
+
+// ---------------------------------------------------------------- 番茄钟入口提示（手机，1.2 起专注挪进了中心按钮面板；看过 / 关掉后不再显示）
+const FOCUS_HINT_KEY = 'hint-focus-entry'
+const focusHint = ref(localStorage.getItem(FOCUS_HINT_KEY) !== '1')
+const closeFocusHint = () => {
+  focusHint.value = false
+  localStorage.setItem(FOCUS_HINT_KEY, '1')
+}
 
 // ---------------------------------------------------------------- 连续打卡
 const streak = computed(() => game.streak)
@@ -328,6 +358,35 @@ const moveToTime = async ({ task, start_time: startTime, conflict }) => {
   }
 }
 
+/** 电脑端：把右栏的无日期任务拖到时间轴上 → 排进这一天的这个时间；放在空闲段时时长不超过空闲。 */
+const TASK_MIME = 'application/x-xyg-task'
+const draggingUndated = ref(false)
+const onUndatedDragStart = (event, task) => {
+  event.dataTransfer.effectAllowed = 'move'
+  event.dataTransfer.setData(TASK_MIME, String(task.id))
+  event.dataTransfer.setData('text/plain', task.title)
+  draggingUndated.value = true
+}
+const dropUndated = async ({ taskId, start_time: startTime, free }) => {
+  draggingUndated.value = false
+  const task = day.value?.undated?.find((t) => t.id === taskId)
+  if (!task) return
+  const date = selected.value
+  const minutes = free ? Math.min(task.duration_minutes || 30, free.minutes) : task.duration_minutes || 30
+  if (toMin(startTime) + minutes > 24 * 60) return ui.toast('排到这里会跨过午夜，换个早一点的时间', 'warning')
+  const before = { due_date: null, start_time: null, duration_minutes: task.duration_minutes }
+  try {
+    await taskApi.update(task.id, { due_date: date, start_time: startTime, duration_minutes: minutes })
+    await tasks.afterChange()
+    showUndo(`「${task.title}」已排到 ${dayjs(date).format('M月D日')} ${startTime}`, async () => {
+      await taskApi.update(task.id, before)
+      await tasks.afterChange()
+    })
+  } catch (error) {
+    ui.fail(error)
+  }
+}
+
 /** 中心按钮"一键排今天"跳过来时带 ?autoplan=1。 */
 function handleQuery() {
   if (!route.query.autoplan) return
@@ -342,15 +401,17 @@ function handleQuery() {
       <!-- 状态栏下方的一条玻璃：内容滚上去时从它下面经过 -->
       <div class="glass-bar sticky top-0 z-20 h-[var(--safe-top)] border-0 lg:hidden" aria-hidden="true" />
       <header class="px-5 pt-4 lg:px-10 lg:pt-7">
-        <div class="mx-auto grid max-w-[720px] gap-2.5" :class="mode !== 'day' && 'lg:max-w-[1180px]'">
+        <div class="mx-auto grid max-w-[720px] gap-2.5 lg:max-w-[1180px]">
           <div class="flex items-center justify-between gap-3">
             <h1 class="text-[28px] font-black leading-tight text-ink">
-              <template v-if="mode === 'day'">{{ dayjs(selected).format('M月D日') }}<small class="ml-1.5 text-lg font-bold">{{ weekdayLabel(selected) }}</small></template>
+              <Transition v-if="mode === 'day'" :name="`slide-${direction}`" mode="out-in">
+                <span :key="selected" class="inline-block">{{ dayjs(selected).format('M月D日') }}<small class="ml-1.5 text-lg font-bold">{{ weekdayLabel(selected) }}</small></span>
+              </Transition>
               <template v-else>日程</template>
             </h1>
             <div class="flex items-center gap-2">
               <button v-if="!isToday" class="chip" type="button" @click="goToday">回到{{ mode === 'month' ? '本月' : mode === 'week' ? '本周' : '今天' }}</button>
-              <button v-if="mode === 'day' && selected >= todayStr() && !plan" class="chip hidden lg:inline-flex" type="button" @click="startPlan">
+              <button v-if="mode === 'day' && selected >= todayStr() && !plan" class="chip hidden lg:inline-flex" type="button" data-tour="day-autoplan" @click="startPlan">
                 <Icon icon="lucide:wand-sparkles" width="14" class="text-primary" />一键排{{ selected === todayStr() ? '今天' : '这天' }}
               </button>
               <RouterLink
@@ -385,26 +446,47 @@ function handleQuery() {
           </div>
 
           <!-- 星期条：左右滑动 / 箭头切换上一周、下一周 -->
-          <div v-if="mode === 'day'" class="-mx-1.5 grid grid-cols-[24px_repeat(7,1fr)_24px] items-center" @touchstart.passive="onStripStart" @touchend="onStripEnd">
+          <div v-if="mode === 'day'" class="-mx-1.5 grid grid-cols-[24px_minmax(0,1fr)_24px] items-center" @touchstart.passive="onStripStart" @touchmove.passive="onStripMove" @touchend="onStripEnd" @touchcancel="onStripEnd">
             <button class="flex h-8 items-center justify-center text-ink-mute hover:text-ink" type="button" aria-label="上一周" title="上一周" @click="shiftWeek(-1)"><Icon icon="lucide:chevron-left" width="16" /></button>
+            <div class="overflow-hidden">
+            <Transition :name="`week-${direction}`" mode="out-in">
+            <div
+              :key="weekKey"
+              class="grid grid-cols-7"
+              :class="!dragX && 'transition-transform duration-200'"
+              :style="dragX ? { transform: `translateX(${dragX}px)` } : undefined"
+            >
             <button
               v-for="d in strip"
               :key="d.key"
               type="button"
-              class="grid justify-items-center gap-0.5 rounded-[14px] py-1.5 transition"
+              class="grid justify-items-center gap-0.5 rounded-[14px] py-1.5 transition lg:mx-1 lg:flex lg:items-baseline lg:justify-center lg:gap-2 lg:py-2"
               :class="d.key === selected ? 'bg-primary text-on-primary' : 'hover:bg-surface/60'"
               :aria-pressed="d.key === selected"
               :aria-label="`${dayjs(d.key).format('M月D日')} 周${d.label}`"
               @click="selected = d.key"
             >
-              <span class="text-[10px] font-medium" :class="d.key === selected ? 'text-on-primary' : 'text-ink-mute'">{{ d.label }}</span>
+              <span class="text-[10px] font-medium lg:text-xs" :class="d.key === selected ? 'text-on-primary' : 'text-ink-mute'">{{ d.label }}</span>
               <span class="num text-[15px] font-bold" :class="d.key === selected ? 'text-on-primary' : d.today ? 'text-primary' : 'text-ink'">{{ d.day }}</span>
             </button>
+            </div>
+            </Transition>
+            </div>
             <button class="flex h-8 items-center justify-center text-ink-mute hover:text-ink" type="button" aria-label="下一周" title="下一周" @click="shiftWeek(1)"><Icon icon="lucide:chevron-right" width="16" /></button>
           </div>
           <div v-else-if="mode === 'week'" class="flex items-center justify-between">
             <button class="chip" type="button" aria-label="上一周" @click="shiftWeek(-1)"><Icon icon="lucide:chevron-left" width="14" />上一周</button>
             <button class="chip" type="button" aria-label="下一周" @click="shiftWeek(1)">下一周<Icon icon="lucide:chevron-right" width="14" /></button>
+          </div>
+
+          <!-- 番茄钟入口提示（只在手机上、只出现到关掉为止） -->
+          <div v-if="focusHint && mode === 'day'" class="flex items-center gap-2.5 rounded-2xl bg-primary-light px-3 py-2.5 lg:hidden" role="note">
+            <span class="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-surface text-primary"><Icon icon="lucide:timer" width="18" /></span>
+            <span class="min-w-0 flex-1 text-xs leading-5 text-ink-soft">
+              <b class="block text-[13px] font-bold text-ink">番茄钟在这里</b>
+              点底部中间的「AI」，面板右下角「专注」就是番茄钟；任务旁的 ▶ 也能直接开始。
+            </span>
+            <button class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-ink-mute hover:bg-surface" type="button" aria-label="知道了，不再提示" title="知道了" @click="closeFocusHint"><Icon icon="lucide:x" width="16" /></button>
           </div>
 
           <!-- 上课通知 -->
@@ -434,27 +516,59 @@ function handleQuery() {
       </header>
 
       <div class="px-5 pt-4 lg:px-10 lg:pt-6">
-        <div class="mx-auto max-w-[720px]" :class="mode !== 'day' && 'lg:max-w-[1180px]'">
-          <template v-if="mode === 'day'">
+        <div class="mx-auto max-w-[720px] lg:max-w-[1180px]">
+          <Transition :name="`slide-${direction}`" mode="out-in">
+          <div v-if="mode === 'day'" :key="`day-${loading ? 'loading' : day?.date}`">
             <div v-if="loading" class="space-y-3"><div v-for="i in 4" :key="i" class="skeleton h-14" /></div>
-            <template v-else-if="day">
-              <DayTimeline
-                v-if="day.items.length || ghosts.length"
-                :day="day"
-                :ghosts="ghosts"
-                :picking="picking"
-                @toggle="toggle"
-                @open="openTask"
-                @plan-free="planFree"
-                @reschedule="moveToTime"
-                @ghost="toggleGhost"
-              />
-              <EmptyState v-else compact icon="lucide:calendar-heart" title="这一天没有课程和定时任务" text="没定时刻的任务在「任务」页" />
-            </template>
-          </template>
+            <div v-else-if="day" class="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-8">
+              <div class="min-w-0">
+                <DayTimeline
+                  v-if="day.items.length || ghosts.length"
+                  :day="day"
+                  :ghosts="ghosts"
+                  :picking="picking"
+                  @toggle="toggle"
+                  @open="openTask"
+                  @plan-free="planFree"
+                  @reschedule="moveToTime"
+                  @ghost="toggleGhost"
+                  @drop-task="dropUndated"
+                />
+                <EmptyState v-else compact icon="lucide:calendar-heart" title="这一天没有课程和定时任务" text="没定时刻的任务在「任务」页" />
+              </div>
 
-          <WeekView v-else-if="mode === 'week'" :selected="selected" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @move="moveToDate" />
-          <MonthView v-else :selected="selected" :month="month" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @month="(m) => (month = m)" @move="moveToDate" />
+              <!-- 电脑端右栏：当日概况 + 没有日期的待办 -->
+              <aside class="hidden space-y-4 lg:sticky lg:top-4 lg:block">
+                <div class="grid grid-cols-3 gap-2 text-center">
+                  <div class="card rounded-2xl p-2.5 shadow-none"><p class="num text-lg font-black text-primary">{{ day.summary.courses }}</p><p class="text-[10px] font-bold text-ink-mute">节课</p></div>
+                  <div class="card rounded-2xl p-2.5 shadow-none"><p class="num text-lg font-black text-ink">{{ day.summary.tasks_done }}/{{ day.summary.tasks }}</p><p class="text-[10px] font-bold text-ink-mute">任务</p></div>
+                  <div class="card rounded-2xl p-2.5 shadow-none"><p class="num text-lg font-black text-idle-ink">{{ shortMinutes(day.summary.free_minutes) }}</p><p class="text-[10px] font-bold text-ink-mute">可支配</p></div>
+                </div>
+                <section v-if="day.undated?.length">
+                  <h3 class="mb-1 flex items-center gap-1.5 px-1 text-xs font-black text-ink-soft">
+                    <Icon icon="lucide:inbox" width="14" />没有日期的待办 <span class="num text-ink-mute">{{ day.undated.length }}</span>
+                  </h3>
+                  <p class="mb-2 flex items-center gap-1 px-1 text-[11px] text-ink-mute"><Icon icon="lucide:grip-vertical" width="12" />拖到左边的时间轴，排进这一天</p>
+                  <div class="space-y-2">
+                    <div
+                      v-for="t in day.undated"
+                      :key="t.id"
+                      draggable="true"
+                      class="cursor-grab active:cursor-grabbing"
+                      @dragstart="onUndatedDragStart($event, t)"
+                      @dragend="draggingUndated = false"
+                    >
+                      <TaskItem :task="t" @toggle="toggle" @open="openTask" @focus="(x) => router.push(focusRoute(x))" />
+                    </div>
+                  </div>
+                </section>
+              </aside>
+            </div>
+          </div>
+
+          <WeekView v-else-if="mode === 'week'" key="week" :selected="selected" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @move="moveToDate" />
+          <MonthView v-else key="month" :selected="selected" :month="month" :courses="timetable.courses" :meta="timetable.meta" :tasks="rangeTasks" @pick="pick" @month="(m) => (month = m)" @move="moveToDate" />
+          </Transition>
         </div>
       </div>
     </div>
@@ -504,3 +618,50 @@ function handleQuery() {
     <TaskEditor :open="editor.open" :task="editor.task" :defaults="editor.defaults" @close="editor.open = false" />
   </div>
 </template>
+
+<style scoped>
+/* 日期 / 内容：往后看从右边滑入，往前看从左边滑入；时长短，避免点日期时显得拖沓 */
+.slide-next-enter-active,
+.slide-next-leave-active,
+.slide-prev-enter-active,
+.slide-prev-leave-active,
+.week-next-enter-active,
+.week-next-leave-active,
+.week-prev-enter-active,
+.week-prev-leave-active {
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.slide-next-enter-from,
+.slide-prev-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
+}
+.slide-next-leave-to,
+.slide-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+/* 星期条整周滑动，位移更大 */
+.week-next-enter-from,
+.week-prev-leave-to {
+  opacity: 0;
+  transform: translateX(40%);
+}
+.week-next-leave-to,
+.week-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-40%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-next-enter-from,
+  .slide-next-leave-to,
+  .slide-prev-enter-from,
+  .slide-prev-leave-to,
+  .week-next-enter-from,
+  .week-next-leave-to,
+  .week-prev-enter-from,
+  .week-prev-leave-to {
+    transform: none;
+  }
+}
+</style>

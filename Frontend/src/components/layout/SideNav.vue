@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useGameStore } from '@/stores/game'
 import { useFocusStore } from '@/stores/focus'
@@ -41,7 +42,7 @@ const groups = computed(() =>
     : GROUPS,
 )
 // 新手教程指向的入口
-const TOUR_NAV = { ai: 'nav-ai', statistics: 'nav-growth' }
+const TOUR_NAV = { view: 'nav-day', ai: 'nav-ai', statistics: 'nav-growth' }
 const level = computed(() => game.level)
 const streak = computed(() => game.streak)
 const startFocus = () => router.push({ name: 'focus' })
@@ -83,7 +84,7 @@ const startFocus = () => router.push({ name: 'focus' })
 
     <RouterLink to="/profile" class="mt-3 rounded-2xl bg-background p-3 transition hover:bg-ink-line/40">
       <div class="flex items-center gap-2.5">
-        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-surface text-xl shadow-soft">{{ auth.user?.avatar }}</span>
+        <UserAvatar :user="auth.user" class="h-9 w-9 shrink-0 rounded-full bg-surface text-xl shadow-soft" />
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-black text-ink">{{ auth.displayName }}</p>
           <p class="text-[11px] font-semibold text-ink-mute">

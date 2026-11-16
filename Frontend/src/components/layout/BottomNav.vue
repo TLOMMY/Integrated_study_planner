@@ -3,13 +3,14 @@
  * 手机底部导航：日程 / 课表 / AI（中心按钮）/ 任务 / 成长。
  * 中心按钮不直接跳页，而是打开面板：一键排今天 → AI 对话入口 → 任务 · 课程 · 考试 · 专注。
  */
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import BottomSheet from '@/components/common/BottomSheet.vue'
 import TaskEditor from '@/components/task/TaskEditor.vue'
 import CourseEditor from '@/components/timetable/CourseEditor.vue'
 import ExamSheet from '@/components/timetable/ExamSheet.vue'
+import { tour } from '@/composables/useOnboarding'
 import { useGameStore } from '@/stores/game'
 import { useAiStore } from '@/stores/ai'
 import { useTimetableStore } from '@/stores/timetable'
@@ -45,6 +46,11 @@ const openPanel = () => {
   // 只取会话列表给"继续上次"用，失败不影响面板
   if (!ai.conversations.length) ai.loadConversations().catch(() => {})
 }
+// 新手教程讲到面板里的入口时自动打开 / 收起
+watch(() => tour.open && tour.panel, (on, was) => {
+  if (on) openPanel()
+  else if (was) panel.value = false
+})
 const go = (to) => {
   panel.value = false
   router.push(to)
@@ -84,7 +90,7 @@ const onTaskSaved = (task) => {
           class="relative flex flex-col items-center justify-center gap-1 text-[10px] font-bold transition"
           :class="isActive(tab) ? 'text-primary' : 'text-ink-mute'"
           :aria-current="isActive(tab) ? 'page' : undefined"
-          :data-tour="tab.name === 'statistics' ? 'nav-growth' : undefined"
+          :data-tour="{ statistics: 'nav-growth', view: 'nav-day' }[tab.name]"
         >
           <Icon :icon="tab.icon" width="22" />
           <span>{{ tab.label }}</span>
@@ -96,7 +102,7 @@ const onTaskSaved = (task) => {
 
   <BottomSheet :open="panel" title="" @close="panel = false">
     <div class="grid gap-3.5 pb-1 pt-2">
-      <button class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-[22px] bg-primary p-4 text-left text-on-primary" type="button" @click="go('/view?autoplan=1')">
+      <button class="grid grid-cols-[1fr_auto] items-center gap-3 rounded-[22px] bg-primary p-4 text-left text-on-primary" type="button" data-tour="panel-autoplan" @click="go('/view?autoplan=1')">
         <span>
           <span class="mb-1.5 inline-block whitespace-nowrap rounded-full bg-primary-dark px-2 py-px text-[10px] font-bold">本地计算 · 不用 AI 次数</span>
           <b class="block text-lg font-black leading-snug">一键排今天</b>
@@ -128,7 +134,7 @@ const onTaskSaved = (task) => {
         >
           <Icon :icon="q.icon" width="20" class="text-primary" />{{ q.label }}
         </button>
-        <button class="grid justify-items-center gap-1.5 rounded-[18px] bg-background pb-2.5 pt-3 text-xs font-bold text-ink" type="button" @click="go('/focus-timer')">
+        <button class="grid justify-items-center gap-1.5 rounded-[18px] bg-background pb-2.5 pt-3 text-xs font-bold text-ink" type="button" data-tour="panel-focus" @click="go('/focus-timer')">
           <Icon icon="lucide:timer" width="20" class="text-primary" />专注
         </button>
       </div>
@@ -137,5 +143,6 @@ const onTaskSaved = (task) => {
 
   <TaskEditor :open="sheet === 'task'" :task="null" :defaults="{ due_date: todayStr() }" @close="sheet = ''" @saved="onTaskSaved" />
   <CourseEditor :open="sheet === 'course'" :course="null" @close="sheet = ''" />
-  <ExamSheet :open="sheet === 'exam'" initial="new" @close="sheet = ''" />
+  <!-- 先进考试列表页（可以导入或手动添加），不直接弹出新建表单 -->
+  <ExamSheet :open="sheet === 'exam'" @close="sheet = ''" />
 </template>

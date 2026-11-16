@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { Icon } from '@iconify/vue'
@@ -8,6 +8,7 @@ import ExamImport from './ExamImport.vue'
 import { useTimetableStore } from '@/stores/timetable'
 import { useUiStore } from '@/stores/ui'
 import { aiRoute, examDaysText } from './examAi'
+import { EXAMPLES, parseExamLine } from '@/utils/quickLine'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -70,6 +71,24 @@ const remove = async (exam) => {
   if (await timetable.removeExam(exam).catch(ui.fail)) view.value = 'list'
 }
 
+// ---------------------------------------------------------------- 列表页顶部：一行添加考试
+const quickLine = ref('')
+const quick = computed(() => (quickLine.value.trim() ? parseExamLine(quickLine.value) : null))
+const quickAdd = async () => {
+  if (!quickLine.value.trim()) return startEdit()
+  if (!quick.value.ok) return ui.toast(quick.value.error, 'warning', 3600)
+  saving.value = true
+  try {
+    await timetable.saveExam(quick.value.data, null)
+    quickLine.value = ''
+    ui.success('已添加考试')
+  } catch (e) {
+    ui.fail(e)
+  } finally {
+    saving.value = false
+  }
+}
+
 const askAi = (exam) => {
   emit('close')
   router.push(aiRoute(exam))
@@ -92,6 +111,21 @@ const askAi = (exam) => {
 
     <!-- 列表 -->
     <div v-else-if="view === 'list'" class="space-y-2">
+      <!-- 一行添加：名称 日期 时间 考场 -->
+      <form class="space-y-1.5 pb-1" @submit.prevent="quickAdd">
+        <div class="flex items-center gap-2">
+   <input v-model="quickLine" class="field min-w-0 flex-1 py-2.5 text-sm font-semibold" :placeholder="`如：${EXAMPLES.exam}`" maxlength="200" enterkeyhint="done" aria-label="一句话添加考试" />
+   <button class="btn-primary shrink-0 px-3.5 py-2.5" type="submit" :disabled="saving" aria-label="添加考试"><Icon icon="lucide:plus" width="18" /></button>
+        </div>
+        <div v-if="quick" class="flex min-h-[24px] flex-wrap items-center gap-1.5 px-1" aria-live="polite">
+   <template v-if="quick.ok">
+     <span class="max-w-full truncate rounded-full bg-primary-light px-2.5 py-0.5 text-xs font-bold text-primary">{{ quick.data.title }}</span>
+     <span v-for="t in quick.tokens" :key="t.text" class="inline-flex items-center gap-1 rounded-full bg-background px-2.5 py-0.5 text-xs font-semibold text-ink-soft"><Icon :icon="t.icon" width="12" />{{ t.text }}</span>
+   </template>
+          <span v-else class="flex items-center gap-1 text-xs font-semibold text-danger"><Icon icon="lucide:circle-alert" width="13" />{{ quick.error }}</span>
+ </div>
+        <p v-else class="px-1 text-[11px] text-ink-mute">名称 + 日期 + 时间 + 考场，用空格分开；要写备注、科目点下面的「添加考试」</p>
+      </form>
       <button
         v-if="!timetable.exams.length"
         class="flex w-full items-center gap-3 rounded-[22px] border border-dashed border-primary-mid bg-primary-light/60 px-4 py-4 text-left"

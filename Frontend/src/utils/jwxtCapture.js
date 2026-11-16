@@ -15,15 +15,18 @@ export const MAX_BYTES = 5 * 1024 * 1024
 const BUTTON_ID = '__xyg_import_btn'
 
 /**
- * 注入页面的脚本（ES5，兼容老旧教务系统的页面环境）。重复注入时只保留一个按钮。
+ * 注入页面的脚本（ES5，兼容老旧教务系统的页面环境）。重复注入时只保留一个按钮；
+ * 页面用脚本整体换掉内容（document.write、单页切换）把按钮冲掉时，每 1.5 秒检查一次补回来。
  * accent：按钮颜色（App 当前主题的主色），只用于这个按钮，不影响页面本身。
  */
 export const captureScript = (accent = '#D85A30') => `(function(){
-  if (window.top !== window || document.getElementById('${BUTTON_ID}')) return;
+  if (window.top !== window) return;
+  if (window.__xygImport) { if (!document.getElementById('${BUTTON_ID}')) window.__xygImport(); return; }
   var M='${FRAME_MARKER}';
   function walk(w,d,out){if(d>4)return;try{var doc=w.document;var html=doc.documentElement.outerHTML;out.push(html);}catch(e){return;}
     for(var i=0;i<w.frames.length;i++){walk(w.frames[i],d+1,out);}}
   function add(){
+    if(document.getElementById('${BUTTON_ID}'))return;
     if(!document.body){setTimeout(add,300);return;}
     var b=document.createElement('button');
     b.id='${BUTTON_ID}';b.type='button';b.textContent='导入此页课表';
@@ -38,6 +41,8 @@ export const captureScript = (accent = '#D85A30') => `(function(){
     };
     document.body.appendChild(b);
   }
+  window.__xygImport=add;
+  setInterval(add,1500);
   add();
 })();`
 

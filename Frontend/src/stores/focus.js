@@ -3,6 +3,7 @@ import { studyApi } from '@/api'
 import { playChime } from '@/utils/chime'
 import { localIso } from '@/utils/dates'
 import { guardEnabled, noise, noisePrefs, strictEnabled } from '@/utils/noise'
+import { ensureLockScreenPermission, hideLockScreen, leftByScreenOff, screenOffCounts, syncLockScreen } from '@/utils/focusNative'
 import { useHomeStore } from './home'
 import { useTasksStore } from './tasks'
 import { useUiStore } from './ui'
@@ -30,6 +31,7 @@ let guardInstalled = false
  * 切页面、锁屏、刷新后时间依然准确。
  * v4：每轮有 sessionId 与 updatedAt，供跨设备同步（useFocusSync）判断新旧与去重；
  *     白噪音随开始 / 暂停 / 结束联动；专注中切走页面会记录次数并在回来时温和提醒。
+ * 安卓 App：锁屏 / 通知栏显示倒计时（每次 persist 时同步）；熄屏默认不算切出，单独记 screenOffs。
  */
 export const useFocusStore = defineStore('focus', {
   state: () => ({
@@ -45,6 +47,7 @@ export const useFocusStore = defineStore('focus', {
     sessionId: null,
     updatedAt: 0,
     distractions: 0,
+    screenOffs: 0,
     hiddenAt: null,
     noiseKind: noisePrefs.kind,
     noiseVolume: noisePrefs.volume,
@@ -73,7 +76,7 @@ export const useFocusStore = defineStore('focus', {
   actions: {
     setup({ task = null, minutes = 25 } = {}) {
       if (this.active) return false
-      this.$patch({ status: 'idle', task, plannedMinutes: minutes, accumulatedMs: 0, segmentStart: null, startedAt: null, lastResult: null, sessionId: null, distractions: 0 })
+      this.$patch({ status: 'idle', task, plannedMinutes: minutes, accumulatedMs: 0, segmentStart: null, startedAt: null, lastResult: null, sessionId: null, distractions: 0, screenOffs: 0 })
       return true
     },
 
@@ -89,6 +92,8 @@ export const useFocusStore = defineStore('focus', {
       this.installGuard()
       // start 总是由按钮点击触发，此时可以合法地开始播放音频
       if (this.noiseKind !== 'off') noise.play(this.noiseKind)
+      // 第一次开始专注时问一次通知权限（锁屏倒计时要用），拿到后补一次
+      ensureLockScreenPermission().then((state) => state === 'granted' && this.syncNative())
     },
 
     /** 暂停；at 是暂停生效的时刻（严格模式按离开的那一刻算），默认现在。 */
@@ -138,6 +143,7 @@ export const useFocusStore = defineStore('focus', {
       this.now = Date.now()
       this.updatedAt = syncNow()
       localStorage.removeItem(STORAGE_KEY)
+      hideLockScreen()
       noise.stop()
       if (natural) playChime()
       document.title = '学业管家'
@@ -194,6 +200,7 @@ export const useFocusStore = defineStore('focus', {
       clearInterval(ticker)
       ticker = null
       localStorage.removeItem(STORAGE_KEY)
+      hideLockScreen()
       document.title = '学业管家'
       noise.stop()
       const { noiseKind, noiseVolume } = this
@@ -202,8 +209,22 @@ export const useFocusStore = defineStore('focus', {
     },
 
     persist() {
-      const { status, task, plannedMinutes, accumulatedMs, segmentStart, startedAt, sessionId, updatedAt, distractions } = this
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ status, task, plannedMinutes, accumulatedMs, segmentStart, startedAt, sessionId, updatedAt, distractions }))
+      const { status, task, plannedMinutes, accumulatedMs, segmentStart, startedAt, sessionId, updatedAt, distractions, screenOffs } = this
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ status, task, plannedMinutes, accumulatedMs, segmentStart, startedAt, sessionId, updatedAt, distractions, screenOffs }))
+      this.syncNative()
+    },
+
+    /** 安卓锁屏 / 通知栏倒计时：进行中显示结束时刻（系统自己倒数），暂停时显示剩余时间。 */
+    syncNative() {
+      const running = this.status === 'running' && this.segmentStart
+      const endAt = running ? this.segmentStart + this.plannedMs - this.accumulatedMs : 0
+      const name = this.task?.title || '自由专注'
+      syncLockScreen({
+        status: this.status,
+        endAt,
+        title: this.status === 'paused' ? `已暂停 · 剩余 ${this.clock}` : '专注中',
+        text: name,
+      })
     },
 
     /** 刷新页面后恢复进行中的番茄。 */
@@ -212,7 +233,8 @@ export const useFocusStore = defineStore('focus', {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null')
         if (!saved || !['running', 'paused'].includes(saved.status)) return
-        this.$patch({ ...saved, now: Date.now() })
+        this.$patch({ ...saved, screenOffs: saved.screenOffs || 0, now: Date.now() })
+        this.syncNative()
         this.startTicker()
         this.installGuard()
         this.tick()
@@ -267,6 +289,7 @@ export const useFocusStore = defineStore('focus', {
       clearInterval(ticker)
       ticker = null
       localStorage.removeItem(STORAGE_KEY)
+      hideLockScreen()
       document.title = '学业管家'
       noise.stop()
       const { noiseKind, noiseVolume } = this
@@ -308,14 +331,24 @@ export const useFocusStore = defineStore('focus', {
       }
       if (!this.hiddenAt) this.hiddenAt = Date.now()
     },
-    onReturn() {
+    async onReturn() {
       if (!this.hiddenAt) return
-      const away = Date.now() - this.hiddenAt
+      const leftAt = this.hiddenAt
+      const away = Date.now() - leftAt
       this.hiddenAt = null
       if (this.status !== 'running' || !guardEnabled() || away < AWAY_THRESHOLD) return
-      this.distractions += 1
       const seconds = Math.round(away / 1000)
       const span = seconds >= 60 ? `${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒` : `${seconds} 秒`
+      // 安卓 App：离开期间熄过屏 → 算熄屏，不算切出（设置里可改成也算）；严格模式也不因熄屏暂停
+      if (!screenOffCounts() && (await leftByScreenOff(leftAt))) {
+        if (this.status !== 'running') return
+        this.screenOffs += 1
+        this.persist()
+        useUiStore().toast(`熄屏 ${span}，计时没有中断，不算切出`, 'info', 2600)
+        return
+      }
+      if (this.status !== 'running') return
+      this.distractions += 1
       if (strictEnabled() && away >= STRICT_PAUSE) {
         // 严格模式：按离开的那一刻暂停，离开的时间不算专注；不扣已经专注的时间（走 pause，跨设备同步能收到）
         this.pause(Date.now() - away)

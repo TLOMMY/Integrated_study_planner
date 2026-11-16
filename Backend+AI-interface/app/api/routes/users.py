@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-from fastapi import APIRouter
+from fastapi import APIRouter, File, UploadFile
+from fastapi.responses import Response
 
 from app.api.deps import DB, CurrentUser
+from app.core import ratelimit
 from app.core.config import settings
 from app.core.errors import ApiError, ok
 from app.core.security import hash_password, token_payload, verify_password
@@ -10,10 +12,11 @@ from app.models import (
 )
 from app.schemas import (EmailChangeIn, OnboardingIn, PasswordConfirmIn, PasswordIn, PhoneChangeIn, StudyPrefsIn,
                          UserUpdateIn, VerifyEmailIn)
-from app.services import prefs
+from app.services import avatars, prefs
 from app.services.accounts import user_to_dict, verify_email_code
 
 router = APIRouter(prefix="/users", tags=["用户"])
+AVATAR_PER_HOUR = 20
 
 
 def _check_password(user: User, password: str) -> None:
@@ -121,6 +124,56 @@ def set_onboarding(payload: OnboardingIn, user: CurrentUser, db: DB):
     return ok(user_to_dict(user), "已完成新手教程" if payload.done else "下次登录会再次显示新手教程")
 
 
+# ---------------------------------------------------------------- 自定义头像（图片）
+@router.post("/me/avatar", summary="上传自定义头像（png / jpg / webp，≤5MB；裁成正方形 256px 后存 COS 或本地）")
+def upload_avatar(user: CurrentUser, db: DB, file: UploadFile = File(...)):
+    _no_demo(user, "上传头像")
+    if ratelimit.count("avatar", str(user.id), 3600) >= AVATAR_PER_HOUR:
+        raise ApiError(429, "头像换得太频繁了，过一会儿再试")
+    content = file.file.read(settings.MAX_UPLOAD_BYTES + 1)
+    if not content:
+        raise ApiError(422, "没有收到图片")
+    if len(content) > settings.MAX_UPLOAD_BYTES:
+        raise ApiError(413, "图片不能超过 5MB")
+    data = avatars.normalize(content)
+    key = avatars.object_key(user, data)
+    old = user.avatar_image
+    if key != old:
+        avatars.save(key, data)
+        user.avatar_image = key
+        db.commit()
+        db.refresh(user)
+        if old:
+            avatars.remove(old)
+    ratelimit.add("avatar", str(user.id))
+    return ok(user_to_dict(user), "头像已更新")
+
+
+@router.delete("/me/avatar", summary="删除自定义头像，改回 emoji 头像")
+def delete_avatar(user: CurrentUser, db: DB):
+    old = user.avatar_image
+    user.avatar_image = None
+    db.commit()
+    db.refresh(user)
+    avatars.remove(old)
+    return ok(user_to_dict(user), "已改回 emoji 头像")
+
+
+@router.get("/avatar/{user_id}/{version}.jpg", summary="读取头像图片（地址带内容版本号，可长期缓存）")
+def get_avatar(user_id: int, version: str, db: DB):
+    # <img> 不带登录凭证，所以这里不要求登录；地址里的版本号是内容摘要，猜不到别人没公开的旧图
+    owner = db.get(User, user_id)
+    key = owner.avatar_image if owner else None
+    if not key or avatars.version_of(key) != version:
+        raise ApiError(404, "头像不存在")
+    data = avatars.load(key)
+    if data is None:
+        raise ApiError(404, "头像不存在")
+    return Response(content=data, media_type="image/jpeg",
+                    headers={"Cache-Control": f"public, max-age={avatars.CACHE_SECONDS}, immutable",
+                             "X-Content-Type-Options": "nosniff"})
+
+
 @router.get("/me/study-prefs", summary="学习时段偏好 + 专注习惯统计（AI 排程会读取）")
 def get_study_prefs(user: CurrentUser, db: DB):
     return ok(prefs.to_dict(db, user))
@@ -161,6 +214,7 @@ def export_data(user: CurrentUser, db: DB):
 def delete_account(payload: PasswordConfirmIn, user: CurrentUser, db: DB):
     _no_demo(user, "注销")
     _check_password(user, payload.password)
+    avatars.remove(user.avatar_image)
     for model in (FocusRecord, StudyTask, StudyPlan, Timetable, TimetableSet, XpEvent, UserAchievement, AiProvider, ImportLog):
         db.query(model).filter(model.user_id == user.id).delete(synchronize_session=False)
     db.delete(user)

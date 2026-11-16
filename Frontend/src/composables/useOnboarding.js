@@ -7,7 +7,8 @@ import { reactive } from 'vue'
 import { guideApi } from '@/api/guide'
 import { useAuthStore } from '@/stores/auth'
 
-export const tour = reactive({ open: false, step: 0, startedFor: null })
+// panel：教程要求打开手机底部中心按钮面板（BottomNav 监听它）
+export const tour = reactive({ open: false, step: 0, startedFor: null, panel: false })
 
 const localKey = (userId) => `onboarded-${userId}`
 export const locallyDone = (userId) => localStorage.getItem(localKey(userId)) === '1' || localStorage.getItem('tour-disabled') === '1'
@@ -21,6 +22,7 @@ export function startTour() {
 /** 看完或跳过：记到账号上（演示账号不记录）。 */
 export async function finishTour() {
   tour.open = false
+  tour.panel = false
   const auth = useAuthStore()
   const user = auth.user
   if (!user || user.is_demo || user.onboarded) return

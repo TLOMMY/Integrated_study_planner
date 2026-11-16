@@ -197,6 +197,17 @@
 - 修复 Android 客户端系统通知与语音输入失效的问题；安卓安装包同时使用 v1、v2、v3 签名
 - 运维：数据库每日备份同时上传到腾讯云对象存储
 
+**1.3 · 少填一点，识别更准**
+- 一句话添加：任务、课程、考试都能用一行文字添加，需要时再展开完整表单；在课表空格上点一下或拖动节次即可新建课程
+- 日程页：手机端左右滑动切换日期和周次，带过渡动画；电脑端日程铺满窗口，右侧列出未定日期的任务，可直接拖到时间轴排进当天
+- 考试导入：Excel 的日期单元格、合并单元格、周次与星期列、上下午时间直接按表格读取；可同时选择多个班级，同一班级的不同写法自动归为一类；AI 识别出的日期会按原文校正
+- 课表导入：文字版 PDF 先按表格结构读取，识别更准
+- 讲义大纲：AI 整理每章要掌握的知识点，复习按难度分配时间
+- 自定义头像，存储在腾讯云对象存储
+- 专注：可选熄屏也算切出；Android 客户端锁屏显示倒计时；番茄钟背景提亮
+- 语音输入在当前网络无法使用时自动隐藏麦克风按钮
+- 修复学期设置里开学日期与总周数输入框重叠、AI 对话附件按钮无响应等问题
+
 ### 本地运行
 
 环境要求：Python 3.11 及以上，Node.js 20 及以上，Git。
@@ -323,6 +334,7 @@ cd e2e && npm install && npm test                # 端到端测试，使用本�
 | 1.0 | ✅ 正式版 | AI 助手与体验完善：对话式 AI 助手、任务与课表增强、专注与成长扩展、反馈与管理后台、多主题 |
 | 1.1 | ✅ 正式版 | 功能完善与上线准备：多套课表、AI 删除与撤销、课表识别提速、简称搜索、音乐与语音输入、新手教程与使用手册、AI 用量上限与合规 |
 | 1.2 | ✅ 正式版 | 界面改版与智能排程：珊瑚色玻璃质感界面、时间轴日程、一键排今天、收集箱、考试安排导入、AI 对话附件、异地备份 |
+| 1.3 | ✅ 正式版 | 少填一点，识别更准：一句话添加、滑动切换与拖动排程、表格化考试与课表识别、多班级合并、讲义知识点、自定义头像、锁屏倒计时 |
 
 ### 团队
 
@@ -488,6 +500,17 @@ See the [Chinese section](#功能截图) above for desktop and mobile screenshot
 - Fixes system notifications and voice input in the Android client; the Android package is signed with v1, v2 and v3 schemes
 - Operations: the daily database backup is also uploaded to Tencent Cloud Object Storage
 
+**1.3 · Less typing, better recognition**
+- One-line add: tasks, courses and exams can be added from a single line of text, with the full form one tap away; tap an empty timetable cell or drag across periods to create a course
+- Schedule: swipe left or right on mobile to change day or week, with transitions; on desktop the schedule fills the window and lists undated tasks on the right, ready to drag onto the timeline
+- Exam import: spreadsheet date cells, merged cells, week and weekday columns and am/pm times are read straight from the table; several classes can be selected at once, and different spellings of the same class are grouped; dates recognised by AI are checked against the source
+- Timetable import: text-based PDFs are read by their table structure first
+- Handout outlines: AI lists the key points of each chapter, and revision time follows difficulty
+- Custom avatars, stored in Tencent Cloud Object Storage
+- Focus: screen-off can count as leaving; the Android client shows the countdown on the lock screen; brighter pomodoro background
+- The microphone button hides itself when voice input is unavailable on the current network
+- Fixes the overlapping start-date and total-weeks fields in semester settings and the unresponsive attachment button in AI chat
+
 ### Run locally
 
 Requires Python 3.11+, Node.js 20+ and Git.
@@ -602,6 +625,7 @@ Backend tests cover authentication and data isolation, timetable and import, tas
 | 1.0 | ✅ Released | AI assistant and refinement: conversational AI assistant, richer tasks and timetable, focus and growth extensions, feedback and admin console, themes |
 | 1.1 | ✅ Released | Refinement and launch readiness: multiple timetables, AI deletion with undo, faster timetable recognition, abbreviation search, music and voice input, onboarding and manual, AI usage limits and compliance |
 | 1.2 | ✅ Released | Redesign and smarter scheduling: coral glass interface, timeline schedule, plan my day, inbox, exam schedule import, AI attachments, off-site backup |
+| 1.3 | ✅ Released | Less typing, better recognition: one-line add, swipe and drag scheduling, table-aware exam and timetable recognition, class merging, handout key points, custom avatars, lock-screen countdown |
 
 ### Team
 

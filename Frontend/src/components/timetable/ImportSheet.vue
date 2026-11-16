@@ -459,12 +459,16 @@ const back = () => {
           <p class="font-bold text-ink">识别小贴士</p>
           <p>· 图片需要支持视觉的模型，如 通义千问 qwen-vl、智谱 GLM-4V、GPT-4o；DeepSeek 只能识别文字版 PDF</p>
           <p>· 截图请包含完整的星期表头和节次列，避免反光、倾斜</p>
-          <p>· 文字版 PDF 会先提取文字再识别，更准确也更省额度</p>
+          <p>· 教务系统导出的文字版 PDF 会先按表格线直接读出课程，不用 AI；读不出表格时再交给模型</p>
         </div>
       </template>
     </div>
 
     <div v-else class="space-y-3 pb-2">
+      <div v-if="preview.format === 'pdf-table'" class="flex items-start gap-2 rounded-2xl bg-idle p-3 text-xs leading-5 text-ink-soft">
+        <Icon icon="lucide:table" width="16" class="mt-0.5 shrink-0 text-idle-ink" />
+        <p>按 PDF 里的表格直接读出，没有使用 AI，也不占次数。请核对后导入。</p>
+      </div>
       <div v-if="preview.format === 'ai'" class="flex items-start gap-2 rounded-2xl bg-xp-light p-3 text-xs leading-5 text-ink-soft">
         <Icon icon="lucide:sparkles" width="16" class="mt-0.5 shrink-0 text-xp" />
         <p><AiBadge class="mr-1" />由 <b class="text-ink">{{ friendlyLabel(preview.model) }}</b> 识别{{ preview.source === 'pdf-text' ? '（PDF 文字）' : '' }}，可能有误差，请逐门核对后再导入。</p>

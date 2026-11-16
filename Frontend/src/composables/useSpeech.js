@@ -9,7 +9,24 @@ import { isNativeApp } from '@/api/server'
 import { collectResults, speechErrorMessage, webSpeechCtor } from '@/utils/speech'
 import { useUiStore } from '@/stores/ui'
 
-export const speechSupport = ref(typeof window !== 'undefined' && !isNativeApp() && Boolean(webSpeechCtor(window)))
+// 国内大多连不上浏览器 / 手机厂商的语音服务：第一次因为网络或服务不可用失败后，本机隐藏麦克风，不再反复报错
+const UNAVAILABLE_KEY = 'speech-unavailable'
+const unavailable = () => {
+  try {
+    return localStorage.getItem(UNAVAILABLE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+export const speechSupport = ref(typeof window !== 'undefined' && !isNativeApp() && !unavailable() && Boolean(webSpeechCtor(window)))
+const markUnavailable = () => {
+  try {
+    localStorage.setItem(UNAVAILABLE_KEY, '1')
+  } catch {
+    /* 存不了就只隐藏这一次 */
+  }
+  speechSupport.value = false
+}
 
 // Capacitor 插件是代理对象，访问任何属性（包括 then）都会被当成原生方法调用。
 // 把它作为 Promise 的结果（resolve / async 返回 / then 回调返回）都会被当成 thenable 去调用 then()，
@@ -24,7 +41,7 @@ const loadPlugin = () =>
     .catch(() => ({ plugin: null })))
 
 // 原生 App：插件可用且设备有语音识别服务才显示按钮
-if (typeof window !== 'undefined' && isNativeApp()) loadPlugin().then(({ plugin }) => (speechSupport.value = Boolean(plugin)))
+if (typeof window !== 'undefined' && isNativeApp()) loadPlugin().then(({ plugin }) => (speechSupport.value = Boolean(plugin) && !unavailable()))
 
 // 同一时间只允许一个输入框在听写
 let activeStop = null
@@ -37,6 +54,13 @@ export function useSpeech({ onText, onEnd } = {}) {
   let finalText = ''
 
   const report = (code, native = false) => {
+    const value = String(code || '').toLowerCase()
+    // 真的断网（navigator.onLine 为 false）时只提示，不隐藏；联网却报 network = 连不上语音服务
+    if (value.includes('network') && navigator.onLine !== false) {
+      markUnavailable()
+      ui.toast('当前网络连不上语音识别服务，已隐藏麦克风，请直接打字', 'info', 4000)
+      return
+    }
     const message = speechErrorMessage(code, { native })
     if (message) ui.toast(message, 'warning', 3600)
   }

@@ -29,6 +29,13 @@ export const userApi = {
   exportData: () => http.get('/users/me/export', { timeout: 30000 }),
   deleteAccount: (password) => http.delete('/users/me', { data: { password } }),
   verifyEmail: (code) => http.post('/users/me/verify-email', { code }),
+  // 自定义头像：上传图片（服务器裁成 256px 正方形，存 COS 或本地）/ 删除改回 emoji
+  uploadAvatar: (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    return http.post('/users/me/avatar', form, { timeout: 60000 })
+  },
+  deleteAvatar: () => http.delete('/users/me/avatar'),
 }
 
 export const feedbackApi = {

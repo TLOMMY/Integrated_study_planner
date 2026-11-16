@@ -16,6 +16,8 @@ class User(Base):
     hashed_password = Column(String(200), nullable=False)
     full_name = Column(String(100), nullable=True)
     avatar = Column(String(16), nullable=True, default="🦉")
+    # 自定义头像图片在存储里的对象键（COS 或本地，见 services/avatars.py）；非空时优先于 emoji 显示
+    avatar_image = Column(String(120), nullable=True)
     is_active = Column(Boolean, default=True)
     is_demo = Column(Boolean, default=False)
 

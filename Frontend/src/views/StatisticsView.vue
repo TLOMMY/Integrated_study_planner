@@ -4,6 +4,7 @@ import { Icon } from '@iconify/vue'
 import dayjs from 'dayjs'
 import Heatmap from '@/components/stats/Heatmap.vue'
 import CheckinRule from '@/components/stats/CheckinRule.vue'
+import UserAvatar from '@/components/common/UserAvatar.vue'
 import Leaderboard from '@/components/stats/Leaderboard.vue'
 import ProgressRing from '@/components/common/ProgressRing.vue'
 import { themeColor } from '@/composables/useTheme'
@@ -127,7 +128,7 @@ onActivated(() => stats.data && load())
     <header class="flex items-center justify-between">
       <h1 class="text-[22px] font-black text-ink">成长</h1>
       <RouterLink to="/profile" class="flex items-center gap-2 rounded-full bg-surface py-1 pl-1 pr-3 shadow-soft">
-        <span class="flex h-8 w-8 items-center justify-center rounded-full bg-primary-light text-lg">{{ auth.user?.avatar }}</span>
+        <UserAvatar :user="auth.user" class="h-8 w-8 rounded-full bg-primary-light text-lg" />
         <span class="text-xs font-bold text-ink">{{ auth.displayName }}</span>
       </RouterLink>
     </header>

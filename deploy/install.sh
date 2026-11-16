@@ -106,7 +106,7 @@ fi
 
 echo "==> 2/$STEPS 创建运行用户与目录"
 id xueyeguanjia >/dev/null 2>&1 || useradd --system --home "$ROOT" --shell /usr/sbin/nologin xueyeguanjia
-mkdir -p "$SITE" "$DATA/feedback" "$DATA/health" /etc/xueyeguanjia /var/www/certbot /var/backups/xueyeguanjia
+mkdir -p "$SITE" "$DATA/feedback" "$DATA/avatars" "$DATA/health" /etc/xueyeguanjia /var/www/certbot /var/backups/xueyeguanjia
 
 echo "==> 3/$STEPS 拉取代码"
 # 代码目录属于 xueyeguanjia 用户，root 执行 git 需要声明信任

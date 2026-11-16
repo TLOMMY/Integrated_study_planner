@@ -3,6 +3,8 @@
  * 导入考试安排：粘贴文字，或上传表格 / 网页 / PDF / 截图 → 预览（每条可改、可取消勾选）→ 导入。
  * 表格、网页、复制的文字在服务器本地解析，不占 AI 次数；截图和扫描件才交给模型。
  * 已有的同名同日考试、日期已过、没认出日期的默认不勾。
+ * 表里列了考试班级时（全年级 / 全学院一张表），先选"我的班级"（可多选，如行政班 + 选修的教学班），只勾选、只显示这些班的考试；
+ * 选过的班级记在本机。同一个班的不同写法（25软工1班 / 25软件工程1班）由服务器归成一个。
  */
 import { computed, onBeforeUnmount, ref } from 'vue'
 import dayjs from 'dayjs'
@@ -18,6 +20,7 @@ const ui = useUiStore()
 const ACCEPT = '.xlsx,.xls,.csv,.html,.htm,.mhtml,.txt,.pdf,application/pdf,image/png,image/jpeg,image/webp'
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
 const FIELDS = ['title', 'subject', 'exam_date', 'start_time', 'end_time', 'location', 'note']
+const CLASS_KEY = 'exam-import-classes'
 
 const text = ref('')
 const fileInput = ref(null)
@@ -46,8 +49,20 @@ const run = async (payload) => {
   try {
     const data = await examApi.importPreview(payload)
     result.value = data
-    rows.value = data.items.map((item) => ({ ...item, picked: item.selected }))
+    rows.value = data.items.map((item) => ({ ...item, classes: item.classes || [], picked: item.selected }))
     editing.value = -1
+    // 上次选过、这张表里也有的班级：直接按它筛
+    // 上次选过、这张表里也有的班级：直接按它们筛
+    let saved = []
+    try {
+      saved = JSON.parse(localStorage.getItem(CLASS_KEY) || '[]')
+    } catch {
+      saved = []
+    }
+    myClasses.value = (Array.isArray(saved) ? saved : []).filter((c) => (data.classes || []).includes(c))
+    choosing.value = !myClasses.value.length
+    showAll.value = false
+    applyClass()
   } catch (error) {
     failure.value = describe(error)
   } finally {
@@ -62,6 +77,43 @@ const pickFile = (event) => {
   event.target.value = ''
   if (file) run({ file })
 }
+
+// ---------------------------------------------------------------- 按班级筛选
+const classes = computed(() => result.value?.classes || [])
+const myClasses = ref([])
+const choosing = ref(true)
+const showAll = ref(false)
+const classQuery = ref('')
+const classOptions = computed(() => {
+  const q = classQuery.value.trim()
+  return q ? classes.value.filter((c) => c.includes(q)) : classes.value
+})
+/** 没写班级的考试（公共课、全校统考）对所有班都算 */
+const forMyClass = (row) => !myClasses.value.length || !row.classes.length || row.classes.some((c) => myClasses.value.includes(c))
+const applyClass = () => {
+  for (const row of rows.value) row.picked = row.selected && forMyClass(row)
+}
+const toggleClass = (name) => {
+  const list = myClasses.value
+  myClasses.value = list.includes(name) ? list.filter((c) => c !== name) : [...list, name]
+  showAll.value = false
+  editing.value = -1
+  applyClass()
+}
+const doneChoosing = () => {
+  classQuery.value = ''
+  choosing.value = false
+  if (myClasses.value.length) localStorage.setItem(CLASS_KEY, JSON.stringify(myClasses.value))
+  else localStorage.removeItem(CLASS_KEY)
+}
+const classTitle = computed(() => {
+  const list = myClasses.value
+  if (!list.length) return '选择你的班级'
+  return `我的班级：${list.length > 2 ? `${list.slice(0, 2).join('、')} 等 ${list.length} 个` : list.join('、')}`
+})
+const visibleRows = computed(() => rows.value.map((row, index) => ({ row, index })).filter(({ row }) => showAll.value || forMyClass(row)))
+const hiddenCount = computed(() => rows.value.length - rows.value.filter(forMyClass).length)
+const classText = (row) => (row.classes.length > 3 ? `${row.classes.slice(0, 3).join('、')} 等 ${row.classes.length} 个班` : row.classes.join('、'))
 
 const picked = computed(() => rows.value.filter((r) => r.picked))
 const ready = (row) => row.title.trim() && /^\d{4}-\d{2}-\d{2}$/.test(row.exam_date)
@@ -160,8 +212,41 @@ const sourceText = computed(() => (result.value?.source === 'ai' ? `AI 识别 ·
         <span>找到 <b class="num text-ink">{{ rows.length }}</b> 场<template v-if="result.duplicate_count">，{{ result.duplicate_count }} 场已添加过</template></span>
         <span class="rounded-full bg-background px-2 py-0.5 text-[10px] font-bold">{{ sourceText }}</span>
       </p>
+
+      <!-- 选班级：表里列了考试班级时出现 -->
+      <section v-if="classes.length" class="rounded-[20px] border border-ink-line/70 bg-background px-3.5 py-3" aria-label="选择班级">
+        <div class="flex items-center gap-2">
+          <Icon icon="lucide:users-round" width="16" class="shrink-0 text-primary" />
+          <b class="min-w-0 flex-1 truncate text-sm font-black text-ink" :title="myClasses.join('、')">{{ classTitle }}</b>
+          <button v-if="!choosing" class="shrink-0 text-xs font-bold text-primary" type="button" @click="choosing = true">更换</button>
+          <button v-else-if="myClasses.length" class="shrink-0 rounded-full bg-primary px-3 py-1 text-xs font-bold text-on-primary" type="button" @click="doneChoosing">完成</button>
+        </div>
+        <template v-if="choosing">
+          <p class="mt-1 text-[11px] leading-5 text-ink-mute">这份安排里有 {{ classes.length }} 个班级，可以多选（如行政班 + 选修课的教学班）；只导入这些班要考的场次，没写班级的考试默认都算。</p>
+          <input v-if="classes.length > 8" v-model="classQuery" class="field mt-2 py-2 text-sm" placeholder="搜索班级，如 软件1班" aria-label="搜索班级" />
+          <div class="mt-2 flex max-h-40 flex-wrap gap-1.5 overflow-y-auto" role="group" aria-label="班级（可多选）">
+            <button
+              v-for="name in classOptions"
+              :key="name"
+              class="chip"
+              :class="myClasses.includes(name) && 'chip-active'"
+              type="button"
+              :aria-pressed="myClasses.includes(name)"
+              @click="toggleClass(name)"
+            >
+              <Icon v-if="myClasses.includes(name)" icon="lucide:check" width="12" />{{ name }}
+            </button>
+            <p v-if="!classOptions.length" class="text-xs text-ink-mute">没有匹配的班级</p>
+          </div>
+        </template>
+        <p v-else-if="hiddenCount" class="mt-1 text-[11px] text-ink-mute">
+          已隐藏 {{ hiddenCount }} 场其他班级的考试 ·
+          <button class="font-bold text-link" type="button" @click="showAll = !showAll">{{ showAll ? '只看我的班级' : '显示全部' }}</button>
+        </p>
+      </section>
+
       <article
-        v-for="(row, index) in rows"
+        v-for="{ row, index } in visibleRows"
         :key="index"
         class="rounded-[20px] border bg-surface transition"
         :class="row.picked ? 'border-primary-mid' : 'border-ink-line/70'"
@@ -178,14 +263,26 @@ const sourceText = computed(() => (result.value?.source === 'ai' ? `AI 识别 ·
           >
             <Icon v-if="row.picked" icon="lucide:check" width="13" />
           </button>
-          <button class="min-w-0 flex-1 text-left" type="button" :aria-expanded="editing === index" @click="editing = editing === index ? -1 : index">
+          <!-- 点文字：勾选 / 取消；点右边的笔：展开修改 -->
+          <button class="min-w-0 flex-1 text-left" type="button" @click="toggle(row, index)">
             <p class="truncate text-sm font-black" :class="row.picked ? 'text-ink' : 'text-ink-mute'">{{ row.title || '未命名' }}</p>
             <p class="num mt-0.5 text-xs" :class="row.exam_date ? 'text-ink-soft' : 'font-bold text-primary'">{{ whenText(row) }}</p>
             <p v-if="row.location || row.note" class="mt-0.5 truncate text-[11px] text-ink-mute">{{ [row.location, row.note].filter(Boolean).join(' · ') }}</p>
+            <p v-if="row.classes.length" class="mt-0.5 truncate text-[11px] text-ink-mute" :title="row.classes.join('、')">{{ classText(row) }}</p>
             <p v-if="row.duplicate" class="mt-1 text-[11px] font-bold text-ink-mute">已经添加过</p>
             <p v-else-if="row.problem" class="mt-1 text-[11px] font-bold text-primary">{{ row.problem }}</p>
           </button>
-          <Icon :icon="editing === index ? 'lucide:chevron-up' : 'lucide:pencil'" width="15" class="mt-1 shrink-0 text-ink-mute" />
+          <button
+            class="-m-1.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-ink-mute transition hover:bg-background hover:text-primary"
+            :class="editing === index && 'bg-primary-light text-primary'"
+            type="button"
+            :aria-expanded="editing === index"
+            :aria-label="`${editing === index ? '收起' : '修改'}：${row.title || '未命名'}`"
+            :title="editing === index ? '收起' : '修改'"
+            @click="editing = editing === index ? -1 : index"
+          >
+            <Icon :icon="editing === index ? 'lucide:chevron-up' : 'lucide:pencil'" width="16" />
+          </button>
         </div>
 
         <div v-if="editing === index" class="space-y-2.5 border-t border-ink-line/70 px-3 pb-3 pt-2.5">
